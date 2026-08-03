@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1120" viewBox="0 0 1700 1120" font-family="Segoe UI, Microsoft YaHei, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#666"/>
+    </marker>
+    <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#999"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1700" height="1120" fill="#ffffff"/>
+
+  <!-- ===== EDGES (behind boxes) ===== -->
+  <g stroke="#666" stroke-width="1.5" fill="none">
+    <path d="M 240 140 L 240 215" marker-end="url(#arrow)"/>
+    <path d="M 640 140 L 640 215" marker-end="url(#arrow)"/>
+    <path d="M 180 270 L 180 335" marker-end="url(#arrow)"/>
+    <path d="M 450 270 L 450 335" marker-end="url(#arrow)"/>
+    <path d="M 715 270 L 715 335" marker-end="url(#arrow)"/>
+    <path d="M 180 270 L 180 425" marker-end="url(#arrow)"/>
+    <path d="M 450 270 L 450 425" marker-end="url(#arrow)"/>
+    <path d="M 180 400 L 180 470" marker-end="url(#arrow)"/>
+    <path d="M 715 400 L 715 470" marker-end="url(#arrow)"/>
+    <path d="M 60 420 L 200 645" marker-end="url(#arrow)"/>
+    <path d="M 715 370 L 715 645" marker-end="url(#arrow)"/>
+    <path d="M 715 430 L 715 740" marker-end="url(#arrow)"/>
+    <path d="M 330 460 L 330 735" marker-end="url(#arrow)"/>
+    <path d="M 180 770 L 180 800" marker-end="url(#arrow)"/>
+    <path d="M 450 770 L 450 800" marker-end="url(#arrow)"/>
+    <path d="M 330 485 L 950 465" marker-end="url(#arrow)"/>
+    <path d="M 600 485 L 950 425" marker-end="url(#arrow)"/>
+    <path d="M 480 440 L 1230 245" marker-end="url(#arrow)"/>
+    <path d="M 480 470 L 1230 425" marker-end="url(#arrow)"/>
+    <path d="M 715 460 L 940 455" marker-end="url(#arrow)"/>
+    <path d="M 330 400 L 920 400" marker-end="url(#arrow)"/>
+    <path d="M 330 490 L 920 490" marker-end="url(#arrow)"/>
+  </g>
+  <!-- Phase 2 dashed edges -->
+  <g stroke="#999" stroke-width="1.5" stroke-dasharray="6,4" fill="none">
+    <path d="M 450 540 L 920 810" marker-end="url(#arrowGray)"/>
+    <path d="M 180 540 L 1240 810" marker-end="url(#arrowGray)"/>
+    <path d="M 450 540 L 920 880" marker-end="url(#arrowGray)"/>
+    <path d="M 450 490 L 1240 880" marker-end="url(#arrowGray)"/>
+  </g>
+
+  <!-- ===== C1 客户端 ===== -->
+  <rect x="40" y="40" width="820" height="130" rx="6" fill="#f5f5f5" stroke="#666"/>
+  <text x="56" y="62" font-size="14" font-weight="bold" fill="#333">客户端（Next.js + React + shadcn/ui）</text>
+  <rect x="60" y="80" width="360" height="60" rx="5" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="80" y="102" font-size="12.5" fill="#1c3557">内部用户 Web</text>
+  <text x="80" y="120" font-size="11" fill="#1c3557">项目管理 / 知识库 / 客服 Agent 页面 + 小组件</text>
+  <rect x="460" y="80" width="360" height="60" rx="5" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="480" y="102" font-size="12.5" fill="#1c3557">客户用户 Web</text>
+  <text x="480" y="120" font-size="11" fill="#1c3557">查看蓝图/阶段/纪要 / 问题清单（提交/评论）</text>
+
+  <!-- ===== C2 接入层 ===== -->
+  <rect x="40" y="200" width="820" height="80" rx="6" fill="#f5f5f5" stroke="#666"/>
+  <text x="56" y="222" font-size="14" font-weight="bold" fill="#333">接入层</text>
+  <rect x="60" y="230" width="780" height="40" rx="5" fill="#fff2cc" stroke="#d6b656"/>
+  <text x="80" y="253" font-size="12.5" fill="#5a4a10">API 网关（认证 / 鉴权 / 限流）</text>
+
+  <!-- ===== C3 后端服务 ===== -->
+  <rect x="40" y="310" width="820" height="270" rx="6" fill="#f5f5f5" stroke="#666"/>
+  <text x="56" y="332" font-size="14" font-weight="bold" fill="#333">后端服务（Python · FastAPI，模块化）</text>
+  <g fill="#d5e8d4" stroke="#82b366">
+    <rect x="60" y="340" width="240" height="60" rx="5"/>
+    <rect x="330" y="340" width="240" height="60" rx="5"/>
+    <rect x="600" y="340" width="230" height="60" rx="5"/>
+    <rect x="60" y="430" width="240" height="60" rx="5"/>
+    <rect x="330" y="430" width="240" height="60" rx="5"/>
+    <rect x="600" y="430" width="230" height="60" rx="5"/>
+  </g>
+  <g font-size="11" fill="#264d2e">
+    <text x="75" y="362">Auth &amp; RBAC</text><text x="75" y="378">JWT / 邀请设密 / 项目成员校验</text>
+    <text x="345" y="362">项目管理服务</text><text x="345" y="378">客户/蓝图/阶段/风险/纪要/问题</text>
+    <text x="615" y="362">知识库文档服务</text><text x="615" y="378">Markdown 编辑 / 上传 / 导入 / 发布</text>
+    <text x="75" y="452">操作手册生成引擎</text><text x="75" y="468">分章节生成 + 逐章审校（LLM）</text>
+    <text x="345" y="452">客服 Agent（LangGraph 编排）</text><text x="345" y="468">检索范围注入 / 引用溯源 / 会话 checkpoint</text>
+    <text x="615" y="452">同步 Worker</text><text x="615" y="468">DocumentIndexPort / 幂等 / 轮询</text>
+  </g>
+
+  <!-- ===== C4 数据层 ===== -->
+  <rect x="40" y="620" width="820" height="220" rx="6" fill="#f5f5f5" stroke="#666"/>
+  <text x="56" y="642" font-size="14" font-weight="bold" fill="#333">数据层（平台无关）</text>
+  <g fill="#ffe6cc" stroke="#d79b00">
+    <rect x="60" y="650" width="240" height="60" rx="5"/>
+    <rect x="330" y="650" width="240" height="60" rx="5"/>
+    <rect x="600" y="650" width="230" height="60" rx="5"/>
+    <rect x="60" y="740" width="240" height="60" rx="5"/>
+    <rect x="330" y="740" width="240" height="60" rx="5"/>
+  </g>
+  <g font-size="11" fill="#5a3a00">
+    <text x="75" y="672">PostgreSQL</text><text x="75" y="688">共享 schema + tenant_id + 客户级 RLS</text>
+    <text x="345" y="672">S3 兼容对象存储</text><text x="345" y="688">蓝图 draw.io / 附件 / 上传文件</text>
+    <text x="615" y="672">Redis</text><text x="615" y="688">会话 / 缓存 / 分布式锁</text>
+    <text x="75" y="762">消息队列（RocketMQ 等）</text><text x="75" y="778">文档发布 → RAG 同步事件（事务消息）</text>
+    <text x="345" y="762">日志 / 审计</text><text x="345" y="778">检索与访问审计</text>
+  </g>
+
+  <!-- ===== C5 外部服务 ===== -->
+  <rect x="900" y="40" width="660" height="700" rx="6" fill="#f5f5f5" stroke="#666"/>
+  <text x="916" y="62" font-size="14" font-weight="bold" fill="#333">外部服务（RAG 适配层 / LLM 抽象 / 导入）</text>
+  <rect x="920" y="70" width="620" height="300" rx="5" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="936" y="90" font-size="12.5" font-weight="bold" fill="#4b2e63">RAG 平台（平台无关 · DocumentIndexPort 适配）</text>
+  <g fill="#f0e6f5" stroke="#9673a6">
+    <rect x="940" y="100" width="280" height="60" rx="5"/>
+    <rect x="1260" y="100" width="260" height="60" rx="5"/>
+    <rect x="940" y="190" width="580" height="60" rx="5"/>
+  </g>
+  <g font-size="11" fill="#4b2e63">
+    <text x="956" y="122">内部 Index（共享，只存一份）</text><text x="956" y="138">标准操作手册 / FAQ / 最佳实践 / Online help</text>
+    <text x="1276" y="122">每客户 Index × N（按 project 打标签）</text><text x="1276" y="138">蓝图 / 纪要 / 操作手册 / 问题沉淀</text>
+    <text x="956" y="212">知识检索服务（多库联合检索）</text><text x="956" y="228">相关性选库 / 请求级 Index 范围</text>
+  </g>
+  <rect x="940" y="280" width="580" height="60" rx="5" fill="#fde8e8" stroke="#b85450"/>
+  <text x="956" y="300" font-size="11" fill="#7a1f1a">隔离红线：每客户一个 Index；检索由后端注入范围 + 项目标签过滤；</text>
+  <text x="956" y="316" font-size="11" fill="#7a1f1a">API Key 仅存后端、绝不下发客户端；上线前跨客户渗透测试</text>
+
+  <rect x="920" y="400" width="620" height="60" rx="5" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="936" y="422" font-size="12" fill="#4b2e63">LLM Provider（抽象层，可切换）</text>
+  <text x="936" y="440" font-size="11" fill="#4b2e63">Qwen / DeepSeek / GLM …（平台自有 AI：操作手册生成等）</text>
+
+  <rect x="920" y="490" width="620" height="60" rx="5" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="936" y="512" font-size="12" fill="#4b2e63">Online help（外部项目提供）</text>
+  <text x="936" y="530" font-size="11" fill="#4b2e63">导入 API + 定时增量同步 → 内部 Index</text>
+
+  <!-- ===== C6 Phase 2 接缝 ===== -->
+  <rect x="900" y="780" width="660" height="180" rx="6" fill="#fafafa" stroke="#999" stroke-dasharray="6,4"/>
+  <text x="916" y="802" font-size="13" font-weight="bold" fill="#666">第二阶段预留接缝（虚线，Phase 1 不实现）</text>
+  <g fill="#f5f5f5" stroke="#999" stroke-dasharray="4,3">
+    <rect x="920" y="810" width="280" height="60" rx="5"/>
+    <rect x="1240" y="810" width="280" height="60" rx="5"/>
+    <rect x="920" y="880" width="280" height="60" rx="5"/>
+    <rect x="1240" y="880" width="280" height="60" rx="5"/>
+  </g>
+  <g font-size="11.5" fill="#666">
+    <text x="936" y="832">Monitor ERP API 集成</text>
+    <text x="1256" y="832">视频生成（操作手册 → 视频）</text>
+    <text x="936" y="902">甘特图 / 邮箱同步</text>
+    <text x="1256" y="902">客户 AI Agent（复用范围注入）</text>
+  </g>
+
+  <!-- edge labels -->
+  <g font-size="10" fill="#666">
+    <text x="150" y="205">发布事件</text>
+    <text x="205" y="780">消费</text>
+    <text x="560" y="780">同步项目文档</text>
+    <text x="90" y="780">同步内部文档</text>
+    <text x="250" y="465">蓝图输入</text>
+    <text x="330" y="470">检索 / 生成回答</text>
+    <text x="600" y="470">检索</text>
+    <text x="1020" y="490">导入</text>
+  </g>
+</svg>

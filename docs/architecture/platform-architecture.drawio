@@ -1,0 +1,145 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="monitor-erp-platform-arch" name="Monitor ERP 平台架构">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1150" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============ C1 客户端 ============ -->
+        <mxCell id="c1" value="客户端（Next.js + React + shadcn/ui）" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="820" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="v_internal" value="内部用户 Web&#10;项目管理 / 知识库 / 客服 Agent 页面 + 悬浮小组件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;" vertex="1" parent="c1">
+          <mxGeometry x="20" y="40" width="360" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_customer" value="客户用户 Web&#10;查看蓝图/阶段/纪要 / 问题清单（提交/评论）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;" vertex="1" parent="c1">
+          <mxGeometry x="420" y="40" width="360" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============ C2 接入与网关 ============ -->
+        <mxCell id="c2" value="接入层" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="200" width="820" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="v_gateway" value="API 网关（认证 / 鉴权 / 限流）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=middle;" vertex="1" parent="c2">
+          <mxGeometry x="20" y="30" width="780" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============ C3 后端服务 ============ -->
+        <mxCell id="c3" value="后端服务（Python · FastAPI，模块化）" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="310" width="820" height="270" as="geometry" />
+        </mxCell>
+        <mxCell id="v_auth" value="Auth &amp; RBAC（JWT / 邀请设密 / 项目成员校验）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
+          <mxGeometry x="20" y="30" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_pm" value="项目管理服务&#10;客户/蓝图/阶段/风险/会议纪要/问题清单" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
+          <mxGeometry x="290" y="30" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_doc" value="知识库文档服务&#10;Markdown 编辑 / 文件上传 / Online help 导入 / 发布" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
+          <mxGeometry x="560" y="30" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_gen" value="操作手册生成引擎&#10;分章节生成 + 逐章审校（LLM 抽象）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
+          <mxGeometry x="20" y="120" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_agent" value="客服 Agent（LangGraph 编排）&#10;检索范围注入 / 引用溯源 / 会话 checkpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
+          <mxGeometry x="290" y="120" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_sync" value="同步 Worker（DocumentIndexPort 适配器）&#10;异步导入 / 轮询 / 幂等 / 删除" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
+          <mxGeometry x="560" y="120" width="230" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============ C4 数据层 ============ -->
+        <mxCell id="c4" value="数据层（平台无关）" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="620" width="820" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="v_pg" value="PostgreSQL&#10;共享 schema + tenant_id + 客户级 RLS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;" vertex="1" parent="c4">
+          <mxGeometry x="20" y="30" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_oss" value="S3 兼容对象存储&#10;蓝图 draw.io / 附件 / 上传文件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;" vertex="1" parent="c4">
+          <mxGeometry x="290" y="30" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_redis" value="Redis&#10;会话 / 缓存 / 分布式锁" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;" vertex="1" parent="c4">
+          <mxGeometry x="560" y="30" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_mq" value="消息队列（RocketMQ 等）&#10;文档发布 → RAG 同步事件（事务消息）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;" vertex="1" parent="c4">
+          <mxGeometry x="20" y="120" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_log" value="日志 / 审计（检索与访问审计）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;" vertex="1" parent="c4">
+          <mxGeometry x="290" y="120" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============ C5 外部服务 ============ -->
+        <mxCell id="c5" value="外部服务（RAG 平台经适配层 / LLM 抽象 / 导入）" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="900" y="40" width="660" height="700" as="geometry" />
+        </mxCell>
+        <mxCell id="v_rag" value="RAG 平台（平台无关 · DocumentIndexPort 适配）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;fontStyle=1;" vertex="1" parent="c5">
+          <mxGeometry x="20" y="30" width="620" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="v_internal_index" value="内部 Index（共享，只存一份）&#10;标准操作手册 / FAQ / 最佳实践 / Online help" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;verticalAlign=middle;" vertex="1" parent="c5">
+          <mxGeometry x="40" y="60" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_customer_index" value="每客户 Index × N（按 project 打标签）&#10;蓝图 / 纪要 / 操作手册 / 问题沉淀" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;verticalAlign=middle;" vertex="1" parent="c5">
+          <mxGeometry x="360" y="60" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_search" value="知识检索服务（多库联合检索）&#10;相关性选库 / 请求级 Index 范围" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;verticalAlign=middle;" vertex="1" parent="c5">
+          <mxGeometry x="40" y="150" width="580" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_rag_note" value="隔离红线：每客户一个 Index；检索由后端注入范围 + 项目标签过滤；API Key 仅存后端、绝不下发客户端；跨客户渗透测试" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fde8e8;strokeColor=#b85450;verticalAlign=middle;" vertex="1" parent="c5">
+          <mxGeometry x="40" y="240" width="580" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_llm" value="LLM Provider（抽象层，可切换）&#10;Qwen / DeepSeek / GLM …（平台自有 AI：手册生成等）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=middle;" vertex="1" parent="c5">
+          <mxGeometry x="20" y="360" width="620" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_onlinehelp" value="Online help（外部项目提供）&#10;导入 API + 定时增量同步 → 内部 Index" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=middle;" vertex="1" parent="c5">
+          <mxGeometry x="20" y="450" width="620" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============ C6 Phase 2 接缝 ============ -->
+        <mxCell id="c6" value="第二阶段预留接缝（虚线，Phase 1 不实现）" style="swimlane;startSize=30;html=1;fillColor=#fafafa;strokeColor=#999999;dashed=1;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="900" y="780" width="660" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="v_p2_erp" value="Monitor ERP API 集成" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;fontColor=#666666;" vertex="1" parent="c6">
+          <mxGeometry x="20" y="30" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_p2_video" value="视频生成（操作手册 → 视频）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;fontColor=#666666;" vertex="1" parent="c6">
+          <mxGeometry x="340" y="30" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_p2_gantt" value="甘特图 / 邮箱同步" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;fontColor=#666666;" vertex="1" parent="c6">
+          <mxGeometry x="20" y="100" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="v_p2_cust_agent" value="客户 AI Agent（复用范围注入）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;fontColor=#666666;" vertex="1" parent="c6">
+          <mxGeometry x="340" y="100" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES ============ -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_internal" target="v_gateway"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_customer" target="v_gateway"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_gateway" target="v_auth"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_gateway" target="v_pm"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_gateway" target="v_doc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_gateway" target="v_gen"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_gateway" target="v_agent"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_auth" target="v_redis"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_pm" target="v_pg"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_doc" target="v_pg"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_doc" target="v_oss"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" value="发布事件" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_doc" target="v_mq"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" value="消费" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_mq" target="v_sync"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14" value="同步文档" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_sync" target="v_internal_index"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e15" value="同步项目文档" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_sync" target="v_customer_index"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e16" value="生成" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_gen" target="v_llm"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e17" value="检索" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_agent" target="v_search"><mxGeometry relative="1" as="geometry" /></mxCell>
+<mxCell id="e22" value="生成/回答" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_agent" target="v_llm"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18" value="导入" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_onlinehelp" target="v_doc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e19" value="蓝图输入" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_pm" target="v_gen"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e20" value="检索" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_search" target="v_internal_index"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e21" value="检索" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#666666;" edge="1" parent="1" source="v_search" target="v_customer_index"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Phase 2 dashed -->
+        <mxCell id="ep1" value="Phase 2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#999999;" edge="1" parent="1" source="v_pm" target="v_p2_erp"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ep2" value="Phase 2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#999999;" edge="1" parent="1" source="v_gen" target="v_p2_video"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ep3" value="Phase 2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#999999;" edge="1" parent="1" source="v_pm" target="v_p2_gantt"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ep4" value="Phase 2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#999999;" edge="1" parent="1" source="v_agent" target="v_p2_cust_agent"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
