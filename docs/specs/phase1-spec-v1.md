@@ -133,9 +133,26 @@ Monitor ERP 的实施项目目前缺乏统一的协作平台：客户资料、�
 75. 作为系统，所有检索与数据访问行为写入审计日志，以便追溯
 76. 作为内部用户，我想看到内部与所有客户的数据（内部全权限），以便履行支持职责
 
+### AI 用量计量（Token 成本管理）
+
+77. 作为系统，每次 LLM 调用自动记录 Token 用量（客户/项目归属、场景、模型、输入/输出 Token 数），以便 AI 成本可计量
+78. 作为内部用户，我想按客户/项目/时间段/场景/模型查看 AI Token 用量统计与趋势，以便管理 AI 成本
+79. 作为内部用户，我想让 Token 计量与 RAG 知识库成本（每客户 Index 规格费）联动，以便形成完整的客户 AI 成本视图
+
+### 多模态与场景化多模型
+
+80. 作为内部用户，我想为不同 AI 场景配置不同的 LLM 模型（客服问答 / 文档解析 / 手册生成 / Embedding 等），以便在质量与成本之间平衡
+81. 作为内部用户，AI 功能支持多模态输入（如图片解析：draw.io 蓝图图、文档截图、附件图片），以便处理非纯文本内容
+82. 作为系统，模型切换只改配置不改业务代码（场景 → 模型映射），以便无风险切换供应商
+
 ## Implementation Decisions
 
-**技术栈（2026-08-04 定稿，全栈 TypeScript）**：前端 Next.js + React + TypeScript + shadcn/ui；后端 NestJS（Fastify 适配器）；ORM Drizzle（schema 内原生 `pgPolicy`/`pgRole` 管理 RLS）；Monorepo Turborepo + pnpm workspaces（`apps/web` + `apps/api` + `packages/shared` 类型 + `packages/contracts` zod 契约）；Agent 编排 LangGraph.js（开源核心 + PostgreSQL Checkpointer）；数据库标准 PostgreSQL（共享 schema + tenant_id + 客户级 RLS）；S3 兼容存储；消息队列可替换（RocketMQ 首选，事务消息）；Redis 会话/缓存；`LLMClient` 门面（可切 Qwen/DeepSeek/GLM）；RAG 经 `DocumentIndexPort` 适配层（平台无关，候选 Dify/RagFlow/百炼）。
+**技术栈（2026-08-04 定稿，全栈 TypeScript）**：前端 Next.js + React + TypeScript + shadcn/ui；后端 NestJS（Fastify 适配器）；ORM Drizzle（schema 内原生 `pgPolicy`/`pgRole` 管理 RLS）；Monorepo Turborepo + pnpm workspaces（`apps/web` + `apps/api` + `packages/shared` 类型 + `packages/contracts` zod 契约）；Agent 编排 LangGraph.js（开源核心 + PostgreSQL Checkpointer）；数据库标准 PostgreSQL（共享 schema + tenant_id + 客户级 RLS）；S3 兼容存储；消息队列可替换（RocketMQ 首选，事务消息）；Redis 会话/缓存；RAG 经 `DocumentIndexPort` 适配层（平台无关，候选 Dify/RagFlow/百炼）。
+
+**LLM 抽象（`LLMClient`，升级为场景化多模型路由）**：
+- 按**场景**（scene）路由：客服问答 / 文档解析 / 操作手册生成 / Embedding 等各自映射到配置的 provider + model（如 Qwen-Max 手册生成质量优先、Qwen-Plus 客服问答性价比、Qwen-VL 多模态图片解析）；**换模型 = 改配置，业务代码不动**
+- **多模态支持**：`LLMClient` 支持文本 + 图片输入（draw.io 蓝图图、文档截图、附件图片的解析与理解）
+- **AI 用量计量**：所有 LLM 调用统一经 `LLMClient` 记录用量（prompt/completion tokens、模型、场景、客户/项目归属、时间），落库 `ai_usage` 表；内部用户可按客户/项目/时间/场景/模型统计查看；与 RAG 每客户 Index 成本联动形成客户 AI 成本视图
 
 **模块划分（NestJS 模块）**：
 
@@ -175,7 +192,7 @@ Monitor ERP 的实施项目目前缺乏统一的协作平台：客户资料、�
 
 ## Further Notes
 
-- **成本**：RAG 每客户一个 Index（约 21.6 元/库/月规格费），需设计休眠/归档策略；检索 TopK/Rerank 按需调参控 Token 成本
+- **成本**：RAG 每客户一个 Index（约 21.6 元/库/月规格费），需设计休眠/归档策略；检索 TopK/Rerank 按需调参控 Token 成本；**AI Token 用量计量**（LLMClient 统一记录）与 RAG 规格费联动，形成客户级 AI 成本视图，为日后预算/告警/计费打基础
 - **合规**：中国境内数据驻留；对外服务需 ICP 备案
 - **上线门禁**：跨客户渗透测试通过后方可上线；审计日志留存
 - **红线**：RAG API Key 只存后端；数据库 RLS 兜底；任何"已发布"文档必有同步尝试（事务消息）
