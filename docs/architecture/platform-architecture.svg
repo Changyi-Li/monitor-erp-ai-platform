@@ -61,7 +61,7 @@
 
   <!-- ===== C3 后端服务 ===== -->
   <rect x="40" y="310" width="820" height="270" rx="6" fill="#f5f5f5" stroke="#666"/>
-  <text x="56" y="332" font-size="14" font-weight="bold" fill="#333">后端服务（Python · FastAPI，模块化）</text>
+  <text x="56" y="332" font-size="14" font-weight="bold" fill="#333">后端服务（NestJS · TypeScript，模块化）</text>
   <g fill="#d5e8d4" stroke="#82b366">
     <rect x="60" y="340" width="240" height="60" rx="5"/>
     <rect x="330" y="340" width="240" height="60" rx="5"/>
@@ -75,7 +75,7 @@
     <text x="345" y="362">项目管理服务</text><text x="345" y="378">客户/蓝图/阶段/风险/纪要/问题</text>
     <text x="615" y="362">知识库文档服务</text><text x="615" y="378">Markdown 编辑 / 上传 / 导入 / 发布</text>
     <text x="75" y="452">操作手册生成引擎</text><text x="75" y="468">分章节生成 + 逐章审校（LLM）</text>
-    <text x="345" y="452">客服 Agent（LangGraph 编排）</text><text x="345" y="468">检索范围注入 / 引用溯源 / 会话 checkpoint</text>
+    <text x="345" y="452">客服 Agent（LangGraph.js 编排）</text><text x="345" y="468">检索范围注入 / 引用溯源 / 会话 checkpoint</text>
     <text x="615" y="452">同步 Worker</text><text x="615" y="468">DocumentIndexPort / 幂等 / 轮询</text>
   </g>
 

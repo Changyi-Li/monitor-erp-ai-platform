@@ -25,7 +25,7 @@
         </mxCell>
 
         <!-- ============ C3 后端服务 ============ -->
-        <mxCell id="c3" value="后端服务（Python · FastAPI，模块化）" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c3" value="后端服务（NestJS · TypeScript，模块化）" style="swimlane;startSize=30;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="310" width="820" height="270" as="geometry" />
         </mxCell>
         <mxCell id="v_auth" value="Auth &amp; RBAC（JWT / 邀请设密 / 项目成员校验）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
@@ -40,7 +40,7 @@
         <mxCell id="v_gen" value="操作手册生成引擎&#10;分章节生成 + 逐章审校（LLM 抽象）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
           <mxGeometry x="20" y="120" width="240" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="v_agent" value="客服 Agent（LangGraph 编排）&#10;检索范围注入 / 引用溯源 / 会话 checkpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
+        <mxCell id="v_agent" value="客服 Agent（LangGraph.js 编排）&#10;检索范围注入 / 引用溯源 / 会话 checkpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">
           <mxGeometry x="290" y="120" width="240" height="60" as="geometry" />
         </mxCell>
         <mxCell id="v_sync" value="同步 Worker（DocumentIndexPort 适配器）&#10;异步导入 / 轮询 / 幂等 / 删除" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;" vertex="1" parent="c3">

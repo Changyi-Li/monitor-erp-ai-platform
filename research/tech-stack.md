@@ -1,6 +1,8 @@
 # 调研：Monitor ERP 项目实施管理平台 — 技术栈推荐
 
-> 方式finder ticket #2（map issue #1 的子问题）。本调研基于官方文档/一手资料 + 工程判断，输出推荐方案、理由与备选。
+> ⚠️ **状态：已过时（2026-08-04）**。本调研结论（Java + Vue 推荐）已被用户定稿的**全栈 TypeScript 技术栈**取代，当前有效技术栈见 [tech-stack-typescript.md](tech-stack-typescript.md) 与 `docs/specs/phase1-spec.md` §8。本文保留作为历史决策记录。
+>
+> 原始说明：wayfinder ticket #2（map issue #1 的子问题）。本调研基于官方文档/一手资料 + 工程判断，输出推荐方案、理由与备选。
 > 结论不依赖票 #3（RAG 平台选型）的结果：RAG 提供方通过一个 `DocumentIndexPort` 适配层隔离，Dify / RagFlow / 阿里云百炼任一方案均可接入。
 
 ---

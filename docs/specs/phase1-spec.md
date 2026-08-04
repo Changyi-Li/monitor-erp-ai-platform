@@ -150,15 +150,15 @@
 
 | 项 | 决定 |
 |---|---|
-| 构建方式 | **平台自研 Agent 编排（LangGraph）**；RAG 平台**仅提供检索**（经 `DocumentIndexPort` 适配，平台无关） |
-| 编排框架 | **LangGraph**（Python）：图节点 = 检索 / 生成 / 引用解析；State 含会话历史与检索范围；Checkpointer 持久化 |
+| 构建方式 | **平台自研 Agent 编排（LangGraph.js）**；RAG 平台**仅提供检索**（经 `DocumentIndexPort` 适配，平台无关） |
+| 编排框架 | **LangGraph.js**（TypeScript）：图节点 = 检索 / 生成 / 引用解析；State 含会话历史与检索范围；Checkpointer 持久化 |
 | 对话入口 | 独立「AI 客服」页面 + 悬浮小组件 |
 | 引用溯源 | 回答带引用角标，可点击跳转知识库文档原文/章节（自研实现） |
-| 会话 | LangGraph checkpoint 持久化（数据库），多轮记忆，可回看/继续，可审计 |
+| 会话 | LangGraph.js checkpoint 持久化（数据库），多轮记忆，可回看/继续，可审计 |
 | 检索范围 | **内部 KB + 所有客户 Index**（内部用户全量；后端注入范围） |
 | 权限 | 仅内部用户可访问；客户 Agent 复用同一编排（Phase 2） |
 
-实现要点：LLM 经 `LLMClient` 抽象门面；跨大量客户 Index 的检索用 RAG 平台的多库检索能力（多库联合检索/按相关性选库，经适配层）。内部 Agent 与客户 Agent（Phase 2）是**同一张 LangGraph 图**，仅检索范围不同（内部 = 全量；客户 = `[内部, 该客户]` + 项目过滤）。
+实现要点：LLM 经 `LLMClient` 抽象门面；跨大量客户 Index 的检索用 RAG 平台的多库检索能力（多库联合检索/按相关性选库，经适配层）。内部 Agent 与客户 Agent（Phase 2）是**同一张 LangGraph.js 图**，仅检索范围不同（内部 = 全量；客户 = `[内部, 该客户]` + 项目过滤）。
 
 ---
 
@@ -211,22 +211,24 @@
 | 层 | 选型 | 备选 |
 |---|---|---|
 | 前端 | **Next.js + React + TypeScript + shadcn/ui**（Tailwind） | Ant Design / MUI |
-| 后端 | **Python + FastAPI**（SQLAlchemy + Alembic） | Django / Flask |
+| 后端 | **NestJS**（TypeScript，Fastify 适配器） | Fastify / Hono |
 | 数据库 | 标准 **PostgreSQL**（共享 schema + `tenant_id` + RLS） | MySQL + 多租户拦截器 |
+| ORM | **Drizzle**（schema 内原生 `pgPolicy` / `pgRole` 管理 RLS） | Prisma / TypeORM |
 | 对象存储 | S3 兼容（OSS / MinIO）| — |
 | 消息队列 | 可替换（RocketMQ 首选，事务消息） | Kafka / MNS |
 | 缓存/会话 | Redis 兼容 | — |
-| 鉴权 | Python FastAPI + JWT + 租户域内 RBAC | — |
-| LLM 抽象 | Python OpenAI 兼容客户端门面（`LLMClient`，可切 Qwen/DeepSeek/GLM） | LangChain / LiteLLM |
-| Agent 编排 | **LangGraph**（平台自研；RAG 平台仅检索） | 裸编排 / LangChain |
+| 鉴权 | NestJS + JWT + 租户域内 RBAC | — |
+| LLM 抽象 | TypeScript OpenAI 兼容客户端门面（`LLMClient`，可切 Qwen/DeepSeek/GLM） | LangChain.js / LiteLLM |
+| Agent 编排 | **LangGraph.js**（平台自研；RAG 平台仅检索） | 裸编排 / Vercel AI SDK |
 | RAG 平台 | **平台无关**（候选 Dify / RagFlow / 阿里云百炼），经 `DocumentIndexPort` 适配 | 供应商后续决定 |
+| 工程结构 | **Turborepo + pnpm workspaces**（monorepo：`apps/web` + `apps/api` + `packages/*` 共享类型） | Nx / 独立仓库 |
 
-> 技术栈为**用户定稿**（2026-08-03）：前端 Next.js + React + shadcn/ui，后端 Python + FastAPI。多租户 RLS 经 SQLAlchemy 会话级 `SET app.current_tenant` 实现。
+> 技术栈为**用户定稿**（2026-08-04）：**全栈 TypeScript**——前端 Next.js + React + shadcn/ui，后端 NestJS + Drizzle，monorepo 用 Turborepo + pnpm，Agent 编排 LangGraph.js。多租户 RLS 经 Drizzle schema 内 `pgPolicy`（`current_setting('app.tenant_id')`）实现。调研记录见 `research/tech-stack-typescript.md`。
 
 ### 8.2 系统组件（详见架构图）
 
 - **接入**：ALB/API 网关 → 后端服务。
-- **后端服务**（Python · FastAPI，模块化单体；ORM：SQLAlchemy + Alembic）：Auth & RBAC、项目管理（客户/蓝图/阶段/风险/纪要/问题）、知识库文档（创建/上传/导入）、操作手册生成引擎、客服 Agent（LangGraph 编排：范围注入/引用/会话 checkpoint）、同步 Worker。
+- **后端服务**（NestJS · TypeScript，模块化单体；ORM：Drizzle + drizzle-kit）：Auth & RBAC、项目管理（客户/蓝图/阶段/风险/纪要/问题）、知识库文档（创建/上传/导入）、操作手册生成引擎、客服 Agent（LangGraph.js 编排：范围注入/引用/会话 checkpoint）、同步 Worker。
 - **数据**：PostgreSQL（RLS 多租户）、S3 兼容存储、Redis、消息队列。
 - **外部**：RAG 平台（**仅检索**，适配层，供应商待定）、LLM Provider（抽象层）、Online help（外部项目）。
 
@@ -277,3 +279,5 @@
 ## 12. 决策记录
 
 全部决策与依据见 wayfinder 地图 [issue #1](https://github.com/Changyi-Li/monitor-erp-ai-platform/issues/1) 的 Decisions so far（含 #2 技术栈、#3 RAG 选型、#4 身份权限、#5 领域模型、#6 数据隔离、#7 文档同步、#8 客服 Agent、#9 操作手册生成）。
+
+**2026-08-04 技术栈修订**：后端由 Python + FastAPI 改为 **全栈 TypeScript**（NestJS + Drizzle + Turborepo/pnpm + LangGraph.js），调研记录见 [`research/tech-stack-typescript.md`](../../research/tech-stack-typescript.md)。其余决策（RAG 平台、多租户隔离、文档同步、客服 Agent 架构、操作手册生成）不受影响。
