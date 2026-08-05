@@ -15,7 +15,7 @@ packages/
 
 ## 快速开始
 
-前置：Node.js 24、pnpm 11、PostgreSQL（本机 18 或更高）。
+前置：Node.js 24、pnpm 11、PostgreSQL 13+（开发机为 18）。
 
 ```bash
 # 1. 安装依赖
