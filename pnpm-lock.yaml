@@ -105,6 +105,9 @@ importers:
       '@monitor/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@monitor/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       next:
         specifier: 16.3.0
         version: 16.3.0(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

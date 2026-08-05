@@ -2,13 +2,16 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   char,
+  check,
   index,
+  jsonb,
   pgPolicy,
   pgRole,
   pgTable,
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -16,16 +19,24 @@ import {
  * RLS 接缝：spec 的 RLS/pgPolicy/tenant_id 属于后续业务表 issue，
  * 本表刻意保持"无租户"简单形态，RLS 后续加入。
  */
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull().unique(), // 服务层统一 lowercase 后存储
-  passwordHash: text('password_hash').notNull(),
-  displayName: text('display_name').notNull().default(''),
-  role: text('role').notNull().default('internal'), // 'internal' | 'customer'，RBAC issue 再演进
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull().unique(), // 服务层统一 lowercase 后存储
+    passwordHash: text('password_hash').notNull(),
+    displayName: text('display_name').notNull().default(''),
+    // 'super_admin' | 'internal' | 'customer'（RBAC issue #13；客户细粒度角色存 project_members）
+    role: text('role').notNull().default('internal'),
+    isActive: boolean('is_active').notNull().default(true),
+    // 邀请设密（RBAC issue #13）：invite_token_hash 非空 = 账号待激活（isActive=false）
+    inviteTokenHash: char('invite_token_hash', { length: 64 }), // sha256 hex，一次性
+    inviteExpiresAt: timestamp('invite_expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('users_invite_token_hash_idx').on(t.inviteTokenHash)],
+);
 
 export const refreshTokens = pgTable(
   'refresh_tokens',
@@ -141,8 +152,59 @@ export const projects = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * 项目成员（数据边界 = 项目，spec §2.1：项目成员 = 用户 + 项目 + 角色）。
+ * 平台级成员表，与 user_tenants 同级不加 RLS——项目级权限在应用层强制
+ * （MembersService 每请求解析），RLS 兜底仍是客户级（tenant GUC）。
+ */
+export const projectMembers = pgTable(
+  'project_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    invitedBy: uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('project_members_role_check', sql`${t.role} in ('project_manager','key_user','regular_user')`),
+    unique('project_members_project_user_unique').on(t.projectId, t.userId),
+    index('project_members_user_idx').on(t.userId),
+    index('project_members_project_idx').on(t.projectId),
+  ],
+);
+
+/**
+ * 审计日志（登录/关键数据访问/权限变更，spec §11 安全要求）。
+ * 平台级表不加 RLS：受限角色经 ALTER DEFAULT PRIVILEGES 自动获得 CRUD。
+ */
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    actorRole: text('actor_role').notNull(),
+    action: text('action').notNull(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: text('resource_id'),
+    metadata: jsonb('metadata'),
+    ip: text('ip'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('audit_logs_created_at_idx').on(t.createdAt)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
 export type CustomerRow = typeof customers.$inferSelect;
 export type UserTenantRow = typeof userTenants.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
+export type ProjectMemberRow = typeof projectMembers.$inferSelect;
+export type AuditLogRow = typeof auditLogs.$inferSelect;

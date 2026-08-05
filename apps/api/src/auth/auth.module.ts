@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
+import { UsersController } from './users.controller';
 
 @Module({
   imports: [
@@ -20,7 +21,9 @@ import { TokenService } from './token.service';
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, UsersController],
   providers: [AuthService, TokenService, PasswordService],
+  // PasswordService 供成员邀请（占位密码）等场景复用
+  exports: [PasswordService],
 })
 export class AuthModule {}

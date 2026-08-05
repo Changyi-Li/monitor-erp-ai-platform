@@ -14,6 +14,8 @@ export interface TenantContext {
   tenantId: string | null;
   isInternal: boolean;
   userId: string;
+  /** 客户端 IP（审计日志用；@Public 路由无上下文时由 controller 显式传入） */
+  ip?: string;
 }
 
 @Injectable()

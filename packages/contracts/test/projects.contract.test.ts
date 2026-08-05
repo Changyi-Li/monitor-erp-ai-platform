@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ProjectCreateRequestSchema,
+  ProjectCreateResponseSchema,
   ProjectGetResponseSchema,
   ProjectSchema,
   ProjectsListResponseSchema,
@@ -52,12 +54,24 @@ describe('projects 契约：列表与详情响应', () => {
     expect(ProjectsListResponseSchema.safeParse({ projects: [] }).success).toBe(true);
   });
 
-  it('详情响应为 { project }', () => {
-    expect(ProjectGetResponseSchema.safeParse({ project: validProject }).success).toBe(true);
+  it('详情响应为 { project, viewerRole }（viewerRole 三态：internal/项目角色/null）', () => {
+    expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: 'internal' }).success).toBe(true);
+    expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: 'project_manager' }).success).toBe(true);
+    expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: null }).success).toBe(true);
+    expect(ProjectGetResponseSchema.safeParse({ project: validProject }).success).toBe(false);
+    expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: 'admin' }).success).toBe(false);
   });
 
   it('详情内 project 与列表元素同构（ProjectSchema 唯一事实源）', () => {
     expect(ProjectGetResponseSchema.shape.project.safeParse(validProject).success).toBe(true);
     expect(ProjectsListResponseSchema.shape.projects.element.safeParse(validProject).success).toBe(true);
+  });
+
+  it('创建请求：tenantId 必填 + name 规则；创建响应为 { project }', () => {
+    expect(ProjectCreateRequestSchema.safeParse({ tenantId: validProject.tenantId, name: '新项目' }).success).toBe(true);
+    expect(ProjectCreateRequestSchema.safeParse({ name: '无租户' }).success).toBe(false);
+    expect(ProjectCreateRequestSchema.safeParse({ tenantId: 'x', name: '坏租户' }).success).toBe(false);
+    expect(ProjectCreateRequestSchema.safeParse({ tenantId: validProject.tenantId, name: '  ' }).success).toBe(false);
+    expect(ProjectCreateResponseSchema.safeParse({ project: validProject }).success).toBe(true);
   });
 });

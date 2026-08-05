@@ -22,7 +22,7 @@ export class ApiError extends Error {
 }
 
 interface ApiFetchOptions<T> {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** 响应契约：返回体经 safeParse 校验 */
   schema: z.ZodType<T>;

@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { UserRole } from '@monitor/shared';
+import { sha256Hex } from './token-hash';
 
 export interface AccessTokenPayload {
   sub: string;
@@ -61,14 +62,10 @@ export class TokenService {
       Date.now() +
         ttlToMs(this.config.get<string>('JWT_REFRESH_TTL') ?? '30d'),
     );
-    return { token, tokenHash: sha256(token), expiresAt };
+    return { token, tokenHash: sha256Hex(token), expiresAt };
   }
 
   hashRefreshToken(token: string): string {
-    return sha256(token);
+    return sha256Hex(token);
   }
-}
-
-function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
 }

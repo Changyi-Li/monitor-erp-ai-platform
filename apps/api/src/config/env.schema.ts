@@ -9,6 +9,8 @@ export const EnvSchema = z.object({
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
   PORT: z.coerce.number().int().positive().default(3001),
+  // 邀请链接前缀（web 前端地址；无邮件基础设施时由 API 直接返回完整链接）
+  WEB_URL: z.url().default('http://localhost:3000'),
   // 适配层驱动：切换实现只改配置，业务代码零改动
   STORAGE_DRIVER: z.enum(['memory']).default('memory'),
   MQ_DRIVER: z.enum(['memory']).default('memory'),

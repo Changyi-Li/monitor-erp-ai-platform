@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -13,12 +14,17 @@ import {
   type RegisterRequest,
   type RegisterResponse,
   type RefreshResponse,
+  type SetPasswordRequest,
+  type SetPasswordResponse,
   type User,
+  type UsersListResponse,
 } from '@monitor/contracts';
 import type { UserRole } from '@monitor/shared';
+import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
 import { DRIZZLE, type Database } from '../database/database.module';
 import { refreshTokens, users, type UserRow } from '../database/schema';
 import { PasswordService } from './password.service';
+import { sha256Hex } from './token-hash';
 import { TokenService } from './token.service';
 
 @Injectable()
@@ -27,6 +33,7 @@ export class AuthService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly password: PasswordService,
     private readonly token: TokenService,
+    private readonly audit: AuditService,
   ) {}
 
   async register(input: RegisterRequest): Promise<RegisterResponse> {
@@ -53,7 +60,7 @@ export class AuthService {
     return { user: toUserDto(user) };
   }
 
-  async login(input: LoginRequest): Promise<LoginResponse> {
+  async login(input: LoginRequest, ip?: string): Promise<LoginResponse> {
     const email = input.email.toLowerCase();
     const [user] = await this.db
       .select()
@@ -61,12 +68,24 @@ export class AuthService {
       .where(eq(users.email, email))
       .limit(1);
 
-    // 统一文案，防用户枚举
+    // 统一文案，防用户枚举；失败同样记审计（含邮箱，供安全排查）
     if (!user || !(await this.password.verify(input.password, user.passwordHash))) {
+      await this.audit.record(AUDIT_ACTIONS.LOGIN_FAILED, {
+        actorRole: 'anonymous',
+        resourceType: 'user',
+        metadata: { email },
+        ip,
+      });
       throw new UnauthorizedException('邮箱或密码错误');
     }
     if (!user.isActive) {
-      throw new UnauthorizedException('账号已停用');
+      await this.audit.record(AUDIT_ACTIONS.LOGIN_FAILED, {
+        actorRole: 'anonymous',
+        resourceType: 'user',
+        metadata: { email, reason: 'inactive' },
+        ip,
+      });
+      throw new UnauthorizedException('账号未激活或已停用');
     }
 
     const access = this.token.signAccessToken({
@@ -81,12 +100,62 @@ export class AuthService {
       expiresAt: refresh.expiresAt,
     });
 
+    await this.audit.record(AUDIT_ACTIONS.LOGIN, {
+      actorUserId: user.id,
+      actorRole: user.role,
+      resourceType: 'user',
+      resourceId: user.id,
+      metadata: { email },
+      ip,
+    });
+
     return {
       user: toUserDto(user),
       accessToken: access.token,
       refreshToken: refresh.token,
       expiresIn: access.expiresIn,
     };
+  }
+
+  /** 邀请链接首次设密：一次性 token（sha256 落库），设密后立即失效 */
+  async setPassword(input: SetPasswordRequest, ip?: string): Promise<SetPasswordResponse> {
+    const tokenHash = sha256Hex(input.token);
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.inviteTokenHash, tokenHash))
+      .limit(1);
+    // 统一文案覆盖：无效 / 过期 / 已使用（isActive=true），不泄露具体状态
+    if (
+      !user ||
+      !user.inviteExpiresAt ||
+      user.inviteExpiresAt <= new Date() ||
+      user.isActive
+    ) {
+      throw new BadRequestException('邀请链接无效或已过期');
+    }
+
+    const passwordHash = await this.password.hash(input.password);
+    await this.db
+      .update(users)
+      .set({
+        passwordHash,
+        inviteTokenHash: null,
+        inviteExpiresAt: null,
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id));
+
+    await this.audit.record(AUDIT_ACTIONS.SET_PASSWORD, {
+      actorUserId: user.id,
+      actorRole: user.role,
+      resourceType: 'user',
+      resourceId: user.id,
+      ip,
+    });
+
+    return { ok: true };
   }
 
   /** 轮换式刷新：旧 token 标记 revoked + 插入新行（事务），旧 token 立即失效 */
@@ -152,6 +221,17 @@ export class AuthService {
       throw new UnauthorizedException('用户不存在');
     }
     return { user: toUserDto(user) };
+  }
+
+  /** 用户管理列表（@Roles(super_admin, internal) 守卫，全量平台账号） */
+  async listUsers(): Promise<UsersListResponse> {
+    const rows = await this.db
+      .select()
+      .from(users)
+      .orderBy(users.createdAt);
+    return {
+      users: rows.map((row) => ({ ...toUserDto(row), isActive: row.isActive })),
+    };
   }
 }
 

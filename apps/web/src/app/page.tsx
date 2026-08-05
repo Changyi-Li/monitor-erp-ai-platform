@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '../components/auth-provider';
+import { userRoleLabel } from '../lib/roles';
 
 /** 主页：展示登录态与当前用户（demo path 落点） */
 export default function HomePage() {
@@ -27,7 +28,7 @@ export default function HomePage() {
       <p>当前登录用户：</p>
       <ul>
         <li>邮箱：{user.email}</li>
-        <li>角色：{user.role === 'internal' ? '内部用户' : '客户用户'}</li>
+        <li>角色：{userRoleLabel(user.role)}</li>
         <li>注册时间：{new Date(user.createdAt).toLocaleString()}</li>
       </ul>
     </div>

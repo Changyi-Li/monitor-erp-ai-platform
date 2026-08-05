@@ -2,9 +2,13 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { isPlatformRole, userRoleLabel } from '../lib/roles';
 import { useAuth } from './auth-provider';
 
-/** 右上角：登录态显示当前用户 + 登出按钮；未登录显示登录/注册链接 */
+/**
+ * 顶部导航：登录态显示角色菜单（项目=全部登录用户；用户管理=内部/超管，demo path：
+ * 菜单与按钮按权限显示/隐藏）+ 当前用户 + 登出；未登录显示登录/注册链接。
+ */
 export function Topbar() {
   const { user, status, logout } = useAuth();
   const router = useRouter();
@@ -25,12 +29,16 @@ export function Topbar() {
       }}
     >
       <strong>Monitor ERP AI Platform</strong>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {status === 'loading' && <span>加载中…</span>}
         {status === 'authenticated' && user && (
           <>
+            <nav style={{ display: 'flex', gap: 12 }}>
+              <Link href="/projects">项目</Link>
+              {isPlatformRole(user.role) && <Link href="/users">用户管理</Link>}
+            </nav>
             <span>
-              {user.displayName}（{user.email}）
+              {user.displayName}（{user.email} · {userRoleLabel(user.role)}）
             </span>
             <button type="button" onClick={handleLogout}>
               登出

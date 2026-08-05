@@ -97,10 +97,15 @@ describe('Tenancy e2e：多租户 RLS 隔离', () => {
       cidB = customerB.id as string;
       await owner`insert into user_tenants (user_id, customer_id) values (${userIdA}, ${cidA}), (${userIdB}, ${cidB})`;
       const [a1] = await owner`insert into projects (tenant_id, name) values (${cidA}, 'A1') returning id`;
-      await owner`insert into projects (tenant_id, name) values (${cidA}, 'A2')`;
+      const [a2] = await owner`insert into projects (tenant_id, name) values (${cidA}, 'A2') returning id`;
+      // 同租户无成员关系项目 A3（RBAC #13：跨项目访问 → 403）
+      await owner`insert into projects (tenant_id, name) values (${cidA}, 'A3')`;
       const [b1] = await owner`insert into projects (tenant_id, name) values (${cidB}, 'B1') returning id`;
       projectA1Id = a1.id as string;
       projectB1Id = b1.id as string;
+      // RBAC #13：客户 A 的可见范围 = active 成员项目（A1 regular / A2 key_user）
+      await owner`insert into project_members (project_id, user_id, role) values
+        (${a1.id}, ${userIdA}, 'regular_user'), (${a2.id}, ${userIdA}, 'key_user')`;
     } finally {
       await owner.end();
     }
@@ -130,10 +135,25 @@ describe('Tenancy e2e：多租户 RLS 隔离', () => {
       expect(ErrorResponseSchema.safeParse(body).success).toBe(true);
     });
 
-    it('客户 A 访问自己的项目 → 200', async () => {
+    it('客户 A 访问同租户非成员项目 A3 → 403（跨项目访问，RBAC #13）', async () => {
+      // A3 是客户 A 租户内但非成员 → 详情接口返回 403（同租户跨项目）
+      const owner = connectOwner();
+      try {
+        const [a3] = await owner`select id from projects where name = 'A3'`;
+        const { status, body } = await getProject(customerAToken, a3.id as string);
+        expect(status).toBe(403);
+        expect(ErrorResponseSchema.safeParse(body).success).toBe(true);
+      } finally {
+        await owner.end();
+      }
+    });
+
+    it('客户 A 访问自己的项目 → 200（viewerRole 为成员角色）', async () => {
       const { status, body } = await getProject(customerAToken, projectA1Id);
       expect(status).toBe(200);
-      expect(ProjectGetResponseSchema.safeParse(body).success).toBe(true);
+      const parsed = ProjectGetResponseSchema.safeParse(body);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data!.viewerRole).toBe('regular_user');
     });
 
     it('非法 uuid → 400（避免 22P02 → 500）', async () => {
@@ -150,11 +170,11 @@ describe('Tenancy e2e：多租户 RLS 隔离', () => {
   });
 
   describe('API 层：内部用户旁路', () => {
-    it('内部用户列表见全部 3 个项目，含 B1', async () => {
+    it('内部用户列表见全部 4 个项目，含 B1 与 A3', async () => {
       const { status, body } = await getProjects(internalToken);
       expect(status).toBe(200);
       const projects = (body as { projects: { name: string }[] }).projects;
-      expect(projects.map((p) => p.name).sort()).toEqual(['A1', 'A2', 'B1']);
+      expect(projects.map((p) => p.name).sort()).toEqual(['A1', 'A2', 'A3', 'B1']);
     });
 
     it('内部用户访问任意租户项目 → 200', async () => {
@@ -175,26 +195,26 @@ describe('Tenancy e2e：多租户 RLS 隔离', () => {
       }
     });
 
-    it('SET LOCAL app.tenant_id=客户A → 只见 A1/A2', async () => {
+    it('SET LOCAL app.tenant_id=客户A → 只见租户 A 全部 3 个项目（RLS 客户级，项目边界在应用层）', async () => {
       const client = postgres(process.env.DATABASE_URL!, { max: 1 });
       try {
         await client.begin(async (tx) => {
           await tx`select set_config('app.tenant_id', ${cidA}, true)`;
           const rows = await tx`select name from projects order by name`;
-          expect(rows.map((r) => r.name)).toEqual(['A1', 'A2']);
+          expect(rows.map((r) => r.name)).toEqual(['A1', 'A2', 'A3']);
         });
       } finally {
         await client.end();
       }
     });
 
-    it('SET LOCAL app.is_internal=true → 全部 3 行', async () => {
+    it('SET LOCAL app.is_internal=true → 全部 4 行', async () => {
       const client = postgres(process.env.DATABASE_URL!, { max: 1 });
       try {
         await client.begin(async (tx) => {
           await tx`select set_config('app.is_internal', 'true', true)`;
           const rows = await tx`select name from projects order by name`;
-          expect(rows.map((r) => r.name)).toEqual(['A1', 'A2', 'B1']);
+          expect(rows.map((r) => r.name)).toEqual(['A1', 'A2', 'A3', 'B1']);
         });
       } finally {
         await client.end();

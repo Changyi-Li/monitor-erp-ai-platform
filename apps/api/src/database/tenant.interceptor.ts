@@ -77,7 +77,7 @@ export class TenantInterceptor implements NestInterceptor {
         `);
       }
       return this.tenantContext.run(
-        { tx, tenantId, isInternal, userId: user.sub },
+        { tx, tenantId, isInternal, userId: user.sub, ip: request.ip },
         () => lastValueFrom(next.handle()),
       );
     });

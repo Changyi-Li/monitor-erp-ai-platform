@@ -5,7 +5,9 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import {
   LoginRequestSchema,
   LoginResponseSchema,
@@ -16,6 +18,8 @@ import {
   RefreshResponseSchema,
   RegisterRequestSchema,
   RegisterResponseSchema,
+  SetPasswordRequestSchema,
+  SetPasswordResponseSchema,
   type LoginRequest,
   type LoginResponse,
   type LogoutRequest,
@@ -24,6 +28,8 @@ import {
   type RefreshResponse,
   type RegisterRequest,
   type RegisterResponse,
+  type SetPasswordRequest,
+  type SetPasswordResponse,
 } from '@monitor/contracts';
 import { CurrentUser, type AuthUser } from '../common/current-user.decorator';
 import { Public } from '../common/public.decorator';
@@ -50,8 +56,20 @@ export class AuthController {
   @ZodResponse(LoginResponseSchema)
   login(
     @Body(new ZodValidationPipe(LoginRequestSchema)) body: LoginRequest,
+    @Req() req: FastifyRequest,
   ): Promise<LoginResponse> {
-    return this.auth.login(body);
+    return this.auth.login(body, req.ip);
+  }
+
+  @Public()
+  @Post('set-password')
+  @HttpCode(HttpStatus.OK)
+  @ZodResponse(SetPasswordResponseSchema)
+  setPassword(
+    @Body(new ZodValidationPipe(SetPasswordRequestSchema)) body: SetPasswordRequest,
+    @Req() req: FastifyRequest,
+  ): Promise<SetPasswordResponse> {
+    return this.auth.setPassword(body, req.ip);
   }
 
   @Public()

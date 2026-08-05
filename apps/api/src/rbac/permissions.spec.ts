@@ -1,0 +1,61 @@
+import { describe, expect, it } from 'vitest';
+import { can, PERMISSION_MATRIX, PERMISSIONS } from '@monitor/shared';
+
+/**
+ * 权限矩阵 sanity（spec §2.4）：shared 常量与矩阵的守护测试。
+ * 矩阵是唯一事实源；后续功能模块落端点时直接复用 can()。
+ */
+describe('权限矩阵', () => {
+  it('每项权限至少映射一个角色', () => {
+    for (const permission of PERMISSIONS) {
+      expect(
+        PERMISSION_MATRIX[permission].length,
+        `${permission} 未映射任何角色`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it('super_admin ⊇ internal：internal 出现的行 super_admin 必在（超管=内部全权限）', () => {
+    for (const permission of PERMISSIONS) {
+      if (PERMISSION_MATRIX[permission].includes('internal')) {
+        expect(
+          PERMISSION_MATRIX[permission],
+          `${permission} 缺 super_admin`,
+        ).toContain('super_admin');
+      }
+    }
+  });
+
+  it('spec §2.4 客户侧差异：评论（PM/KeyUser，普通用户不可）', () => {
+    expect(can('regular_user', 'issue:comment')).toBe(false);
+    expect(can('key_user', 'issue:comment')).toBe(true);
+    expect(can('project_manager', 'issue:comment')).toBe(true);
+    expect(can('internal', 'issue:comment')).toBe(true);
+  });
+
+  it('spec §2.4：问题管理（仅 PM+），Key User 不可', () => {
+    expect(can('key_user', 'issue:manage')).toBe(false);
+    expect(can('regular_user', 'issue:manage')).toBe(false);
+    expect(can('project_manager', 'issue:manage')).toBe(true);
+  });
+
+  it('spec §2.4：提交问题全员可', () => {
+    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
+      expect(can(role as never, 'issue:create')).toBe(true);
+    }
+  });
+
+  it('本期强制项：建项目=内部+；建客户=仅超管；成员管理=PM+', () => {
+    expect(can('internal', 'project:create')).toBe(true);
+    expect(can('project_manager', 'project:create')).toBe(false);
+    expect(can('super_admin', 'customer:create')).toBe(true);
+    expect(can('internal', 'customer:create')).toBe(false);
+    expect(can('project_manager', 'member:manage')).toBe(true);
+    expect(can('key_user', 'member:manage')).toBe(false);
+  });
+
+  it('null/undefined 角色无权限（fail closed）', () => {
+    expect(can(null, 'project:read')).toBe(false);
+    expect(can(undefined, 'issue:create')).toBe(false);
+  });
+});

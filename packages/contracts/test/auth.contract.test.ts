@@ -30,9 +30,15 @@ describe('auth 契约：UserSchema', () => {
     expect(UserSchema.safeParse(validUser).success).toBe(true);
   });
 
-  it('拒绝非法 uuid / role / 日期 / 空 displayName', () => {
-    expect(UserSchema.safeParse({ ...validUser, id: 'not-a-uuid' }).success).toBe(false);
+  it('接受 RBAC 三态角色（super_admin/internal/customer），拒绝未知 role', () => {
+    for (const role of ['super_admin', 'internal', 'customer'] as const) {
+      expect(UserSchema.safeParse({ ...validUser, role }).success).toBe(true);
+    }
     expect(UserSchema.safeParse({ ...validUser, role: 'admin' }).success).toBe(false);
+  });
+
+  it('拒绝非法 uuid / 日期 / 空 displayName', () => {
+    expect(UserSchema.safeParse({ ...validUser, id: 'not-a-uuid' }).success).toBe(false);
     expect(UserSchema.safeParse({ ...validUser, createdAt: '2026-13-99' }).success).toBe(false);
     expect(UserSchema.safeParse({ ...validUser, displayName: '  ' }).success).toBe(false);
   });
