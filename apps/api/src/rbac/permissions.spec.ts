@@ -45,11 +45,16 @@ describe('权限矩阵', () => {
     }
   });
 
-  it('本期强制项：建项目=内部+；建客户=仅超管；成员管理=PM+', () => {
+  it('本期强制项：建项目=内部+；建客户=仅超管；编辑客户=内部+；成员管理=PM+', () => {
     expect(can('internal', 'project:create')).toBe(true);
     expect(can('project_manager', 'project:create')).toBe(false);
     expect(can('super_admin', 'customer:create')).toBe(true);
     expect(can('internal', 'customer:create')).toBe(false);
+    // #14：编辑客户资料 = 内部+（客户侧无任何客户写权限）
+    expect(can('super_admin', 'customer:update')).toBe(true);
+    expect(can('internal', 'customer:update')).toBe(true);
+    expect(can('project_manager', 'customer:update')).toBe(false);
+    expect(can('regular_user', 'customer:update')).toBe(false);
     expect(can('project_manager', 'member:manage')).toBe(true);
     expect(can('key_user', 'member:manage')).toBe(false);
   });

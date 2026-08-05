@@ -3,6 +3,8 @@ import {
   CustomerCreateRequestSchema,
   CustomerCreateResponseSchema,
   CustomerSchema,
+  CustomerUpdateRequestSchema,
+  CustomerUpdateResponseSchema,
   CustomersListResponseSchema,
 } from '../src';
 
@@ -60,5 +62,31 @@ describe('customers 契约：列表', () => {
     ).toBe(true);
     expect(CustomersListResponseSchema.safeParse({ customers: [] }).success).toBe(true);
     expect(CustomersListResponseSchema.safeParse({ customers: [{}] }).success).toBe(false);
+  });
+});
+
+describe('customers 契约：编辑', () => {
+  it('接受部分更新请求（可只改一个字段）', () => {
+    expect(CustomerUpdateRequestSchema.safeParse({ name: '客户A改' }).success).toBe(true);
+    expect(CustomerUpdateRequestSchema.safeParse({ industry: '零售' }).success).toBe(true);
+  });
+
+  it('industry/region 可显式传 null 清空', () => {
+    expect(
+      CustomerUpdateRequestSchema.safeParse({ industry: null, region: null }).success,
+    ).toBe(true);
+  });
+
+  it('空对象合法（无操作）', () => {
+    expect(CustomerUpdateRequestSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('拒绝空名称与超长名称', () => {
+    expect(CustomerUpdateRequestSchema.safeParse({ name: '  ' }).success).toBe(false);
+    expect(CustomerUpdateRequestSchema.safeParse({ name: 'x'.repeat(129) }).success).toBe(false);
+  });
+
+  it('编辑响应为 { customer }', () => {
+    expect(CustomerUpdateResponseSchema.safeParse({ customer: validCustomer }).success).toBe(true);
   });
 });

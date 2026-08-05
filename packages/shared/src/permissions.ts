@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   'member:manage',
   'user:manage',
   'customer:create',
+  'customer:update',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -55,6 +56,7 @@ export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = 
   'member:manage': ['super_admin', 'internal', 'project_manager'],
   'user:manage': ['super_admin', 'internal'],
   'customer:create': ['super_admin'],
+  'customer:update': ['super_admin', 'internal'],
 };
 
 /** 角色是否拥有该权限。role 为 null（无成员关系/未解析）→ 无权限 */

@@ -502,7 +502,8 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(denied.statusCode).toBe(403);
     });
 
-    it('GET /api/customers：内部 200；客户 403', async () => {
+    // #14：列表放开给客户角色（RLS 过滤 → 只见所属客户，只读）；编辑 PATCH 仍 403
+    it('GET /api/customers：内部 200 全量；客户 200 但只见所属（RLS 过滤）', async () => {
       const ok = await app.inject({
         method: 'GET',
         url: '/api/customers',
@@ -514,6 +515,18 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         method: 'GET',
         url: '/api/customers',
         headers: { authorization: `Bearer ${pmToken}` },
+      });
+      expect(denied.statusCode).toBe(200);
+      const body = denied.json() as { customers: { id: string }[] };
+      expect(body.customers.length).toBeLessThanOrEqual(1);
+    });
+
+    it('PATCH /api/customers/:id：客户角色 403（只读边界，#14 验收 ③）', async () => {
+      const denied = await app.inject({
+        method: 'PATCH',
+        url: `/api/customers/00000000-0000-4000-8000-000000000000`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { name: '越权' },
       });
       expect(denied.statusCode).toBe(403);
     });

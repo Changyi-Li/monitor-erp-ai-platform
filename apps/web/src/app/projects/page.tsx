@@ -3,11 +3,14 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
+  CustomersListResponseSchema,
   ProjectsListResponseSchema,
+  type CustomersListResponse,
   type ProjectsListResponse,
 } from '@monitor/contracts';
 import { apiFetch, errorMessage } from '../../lib/api';
 import { useAuth } from '../../components/auth-provider';
+import { isPlatformRole } from '../../lib/roles';
 
 /**
  * 项目列表：所有登录用户可见（数据边界=项目，客户只见自己成员的项目；
@@ -20,12 +23,22 @@ export default function ProjectsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [form, setForm] = useState({ tenantId: '', name: '' });
+  const [customers, setCustomers] = useState<CustomersListResponse | null>(null);
 
   useEffect(() => {
     apiFetch('/api/projects', { schema: ProjectsListResponseSchema })
       .then(setData)
       .catch((err: unknown) => setError(errorMessage(err)));
   }, []);
+
+  // 建项目表单的客户下拉（内部/超管专属表单才需要；GET /api/customers 对内部返回全部）
+  useEffect(() => {
+    if (user && isPlatformRole(user.role)) {
+      apiFetch('/api/customers', { schema: CustomersListResponseSchema })
+        .then(setCustomers)
+        .catch(() => undefined);
+    }
+  }, [user]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -64,12 +77,19 @@ export default function ProjectsPage() {
             marginBottom: 16,
           }}
         >
-          <input
-            placeholder="客户 ID（UUID）"
+          <select
             value={form.tenantId}
             onChange={(e) => setForm({ ...form, tenantId: e.target.value })}
             style={{ flex: 1, minWidth: 220 }}
-          />
+          >
+            <option value="">选择归属客户…</option>
+            {customers?.customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.industry ? `（${c.industry}）` : ''}
+              </option>
+            ))}
+          </select>
           <input
             placeholder="项目名称"
             value={form.name}
