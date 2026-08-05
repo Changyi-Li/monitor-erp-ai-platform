@@ -2,10 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes } from 'node:crypto';
+import type { UserRole } from '@monitor/shared';
 
 export interface AccessTokenPayload {
   sub: string;
   email: string;
+  /** 租户上下文中间件据此判定内部旁路 / 客户租户；旧 token 无此声明按 internal 处理 */
+  role: UserRole;
 }
 
 export interface GeneratedRefreshToken {

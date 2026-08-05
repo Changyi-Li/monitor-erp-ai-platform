@@ -22,12 +22,15 @@ packages/
 pnpm install
 
 # 2. 配置环境变量（apps/api/.env 从 .env.example 复制，填数据库密码与 JWT_SECRET）
-#    DATABASE_URL=postgres://postgres:<password>@localhost:5432/monitor_erp
+#    应用连接必须是受限角色 app_tenant_user（非表 owner，RLS 兜底生效）：
+#    DATABASE_URL=postgres://app_tenant_user:<password>@localhost:5432/monitor_erp
 #    JWT_SECRET=<node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))">
 
-# 3. 建库并应用迁移
+# 3. 建库并应用迁移（迁移含 CREATE ROLE/GRANT，必须以 owner 凭据运行）
 #    psql 创建 monitor_erp 与 monitor_erp_test 两个库后：
-pnpm db:migrate
+#    DATABASE_URL=postgres://postgres:<password>@localhost:5432/monitor_erp pnpm db:migrate
+#    然后开启受限角色登录（口令自定，URL 编码后填入 .env 的 DATABASE_URL）：
+#    psql -U postgres -d monitor_erp -c "ALTER ROLE \"app_tenant_user\" WITH LOGIN PASSWORD '<强口令>';"
 
 # 4. 启动双服务（web:3000 / api:3001）
 pnpm dev

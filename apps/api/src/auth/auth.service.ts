@@ -15,6 +15,7 @@ import {
   type RefreshResponse,
   type User,
 } from '@monitor/contracts';
+import type { UserRole } from '@monitor/shared';
 import { DRIZZLE, type Database } from '../database/database.module';
 import { refreshTokens, users, type UserRow } from '../database/schema';
 import { PasswordService } from './password.service';
@@ -68,7 +69,11 @@ export class AuthService {
       throw new UnauthorizedException('账号已停用');
     }
 
-    const access = this.token.signAccessToken({ sub: user.id, email: user.email });
+    const access = this.token.signAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role as UserRole,
+    });
     const refresh = this.token.generateRefreshToken();
     await this.db.insert(refreshTokens).values({
       userId: user.id,
@@ -105,7 +110,11 @@ export class AuthService {
       throw new UnauthorizedException('会话已失效');
     }
 
-    const access = this.token.signAccessToken({ sub: user.id, email: user.email });
+    const access = this.token.signAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role as UserRole,
+    });
     const next = this.token.generateRefreshToken();
     await this.db.transaction(async (tx) => {
       await tx

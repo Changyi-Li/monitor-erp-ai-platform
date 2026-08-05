@@ -37,6 +37,8 @@ export class JwtAuthGuard implements CanActivate {
       (request as FastifyRequest & { user: AccessTokenPayload }).user = {
         sub: payload.sub,
         email: payload.email,
+        // 旧 token 无 role 声明 → 按 internal 处理（短 TTL 缓解，见 ADR-0001）
+        role: payload.role ?? 'internal',
       };
       return true;
     } catch {

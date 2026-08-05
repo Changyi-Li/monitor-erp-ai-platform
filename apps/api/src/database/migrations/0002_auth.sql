@@ -1,0 +1,2 @@
+ALTER POLICY "customers_tenant_self" ON "customers" TO app_tenant_user USING ("customers"."id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("customers"."id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);--> statement-breakpoint
+ALTER POLICY "projects_tenant_isolation" ON "projects" TO app_tenant_user USING ("projects"."tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK ("projects"."tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid);

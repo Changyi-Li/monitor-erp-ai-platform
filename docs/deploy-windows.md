@@ -71,13 +71,19 @@ Copy-Item apps\api\.env.example apps\api\.env
 编辑 `apps\api\.env`：
 
 ```env
+# 应用连接必须是受限角色 app_tenant_user（非表 owner、无 BYPASSRLS）——
+# 表 owner 默认绕过 RLS，应用不用受限角色则数据隔离红线形同虚设。
 # 密码需 URL 编码（如 ! → %21）
-DATABASE_URL=postgres://postgres:<真实密码>@localhost:5432/monitor_erp
+DATABASE_URL=postgres://app_tenant_user:<真实密码>@localhost:5432/monitor_erp
+# owner 连接：仅迁移/管理用，生产部署完可删掉；密码需 URL 编码
+DATABASE_OWNER_URL=postgres://postgres:<真实密码>@localhost:5432/monitor_erp
 JWT_SECRET=<执行下面命令生成的值>
 JWT_ACCESS_TTL=15m
 JWT_REFRESH_TTL=30d
 PORT=3001
 NODE_ENV=production
+STORAGE_DRIVER=memory
+MQ_DRIVER=memory
 ```
 
 生成 JWT_SECRET：
@@ -86,13 +92,17 @@ NODE_ENV=production
 node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
 ```
 
-继续：
+继续（**迁移必须以 owner 凭据运行**——迁移里有 CREATE ROLE/GRANT/ALTER DEFAULT PRIVILEGES，受限角色无权执行）：
 
 ```powershell
-# 4. 应用数据库迁移（建表）
+# 4. 应用数据库迁移（建表 + RLS 策略 + 受限角色授权）
+$env:DATABASE_URL='postgres://postgres:<真实密码>@localhost:5432/monitor_erp'
 pnpm db:migrate
 
-# 5. 全仓构建（turbo 自动按 shared → contracts → api → web 顺序）
+# 5. 开启受限角色登录并设口令（生产口令自定，随后写入 .env 的 DATABASE_URL）
+psql -U postgres -d monitor_erp -c "ALTER ROLE \"app_tenant_user\" WITH LOGIN PASSWORD '<强口令>';"
+
+# 6. 全仓构建（turbo 自动按 shared → contracts → api → web 顺序）
 pnpm build
 ```
 
@@ -196,6 +206,7 @@ pnpm db:migrate
 
 - [ ] `JWT_SECRET` 生成新值，禁止用示例/开发值
 - [ ] `apps/api/.env` 加入 `.gitignore`，不要提交进仓库
+- [ ] `DATABASE_URL` 使用受限角色 `app_tenant_user`（非 owner）；owner 凭据只出现在 `DATABASE_OWNER_URL` 且生产部署完成后删除
 - [ ] PostgreSQL 使用强密码，限制来源 IP（`pg_hba.conf`）
 - [ ] 只放行必要的端口（3000；公网则只放行 443 到反向代理）
 - [ ] 公网部署必须启用 HTTPS（见第六节）

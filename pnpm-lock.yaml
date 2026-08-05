@@ -23,6 +23,9 @@ importers:
       '@monitor/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@monitor/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@nestjs/common':
         specifier: ^11.1.28
         version: 11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.0.0)

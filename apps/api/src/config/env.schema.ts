@@ -1,11 +1,17 @@
 import { z } from 'zod';
 
 export const EnvSchema = z.object({
+  // 应用连接：受限角色（非 owner、无 BYPASSRLS），RLS 兜底生效
   DATABASE_URL: z.url(),
+  // 仅迁移/管理/测试 seed 用（owner 凭据）；生产不配置
+  DATABASE_OWNER_URL: z.url().optional(),
   JWT_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
   PORT: z.coerce.number().int().positive().default(3001),
+  // 适配层驱动：切换实现只改配置，业务代码零改动
+  STORAGE_DRIVER: z.enum(['memory']).default('memory'),
+  MQ_DRIVER: z.enum(['memory']).default('memory'),
 });
 export type Env = z.infer<typeof EnvSchema>;
 
