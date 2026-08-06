@@ -655,7 +655,8 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
           select action from audit_logs where action = 'issue.comment'`;
         expect(comments.length).toBeGreaterThanOrEqual(2);
         const links = await owner`
-          select action, metadata from audit_logs where action = 'issue.link'`;
+          select action, metadata from audit_logs
+          where action = 'issue.link' order by created_at`;
         expect(links.length).toBeGreaterThanOrEqual(4); // 三种目标 + 客户 PM 关联 kb
         const firstLink = JSON.parse(links[0].metadata as string) as { targetType: string };
         expect(firstLink.targetType).toBe('blueprint');

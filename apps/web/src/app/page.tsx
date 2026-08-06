@@ -46,6 +46,9 @@ export default function HomePage() {
             <Link href="/agent" style={{ color: '#2563eb' }}>
               AI 客服 →
             </Link>
+            <Link href="/usage" style={{ color: '#2563eb' }}>
+              用量统计 →
+            </Link>
           </>
         )}
       </p>

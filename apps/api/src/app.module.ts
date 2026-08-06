@@ -22,6 +22,7 @@ import { MinutesModule } from './minutes/minutes.module';
 import { ProjectsModule } from './projects/projects.module';
 import { StagesModule } from './stages/stages.module';
 import { RagModule } from './rag/rag.module';
+import { UsageModule } from './usage/usage.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { RagModule } from './rag/rag.module';
     KbModule,
     RagModule,
     AgentModule,
+    UsageModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgPolicy,
   pgRole,
   pgTable,
@@ -853,6 +854,57 @@ export const langgraphCheckpointWrites = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * AI Token 用量计量（issue #23，spec #77–#79）：每次 LLM 调用统一经 LLMClient
+ * 记录（UsageRecordingLlmClient wrapper，chat 成功后同请求事务落库）。
+ * 内部专属统计表：RLS 单策略 internal_bypass（客户连接 0 行 fail closed），
+ * 内部全权限——用量是管理视图，不做 userId 过滤（区别于 ai_conversations）。
+ * customerId/projectId 为归属预留：本期唯一场景 agent 客服无项目/客户绑定 →
+ * null（统计「未归属」组），#26 手册生成按项目归属后自然填充。
+ * costUsd 预留 per-call 成本（真实驱动填；Phase 2 客户 AI 成本视图 =
+ * sum(costUsd) + RAG Index 规格费 21.6 元/月/客户）。
+ */
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    scene: text('scene').notNull(), // spec 定稿 4 场景（本期仅 agent 产生数据）
+    model: text('model').notNull(), // memory fake → 'memory'；真实驱动填模型名
+    inputTokens: integer('input_tokens').notNull(),
+    outputTokens: integer('output_tokens').notNull(),
+    customerId: uuid('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }), // 调用发起者
+    conversationId: uuid('conversation_id').references(() => aiConversations.id, {
+      onDelete: 'set null',
+    }), // agent 会话追溯
+    costUsd: numeric('cost_usd', { precision: 12, scale: 4 }), // 预留：真实驱动填 per-call 成本
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('ai_usage_created_at_idx').on(t.createdAt), // 趋势 date_trunc
+    index('ai_usage_customer_idx').on(t.customerId),
+    index('ai_usage_project_idx').on(t.projectId),
+    index('ai_usage_scene_idx').on(t.scene),
+    index('ai_usage_model_idx').on(t.model),
+    index('ai_usage_conversation_idx').on(t.conversationId),
+    check(
+      'ai_usage_scene_check',
+      sql`${t.scene} in ('agent','document_parsing','manual_generation','embedding')`,
+    ),
+    pgPolicy('ai_usage_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+export type AiUsageRow = typeof aiUsage.$inferSelect;
 export type UserRow = typeof users.$inferSelect;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
 export type CustomerRow = typeof customers.$inferSelect;

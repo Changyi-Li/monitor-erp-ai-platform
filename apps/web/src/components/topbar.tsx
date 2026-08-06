@@ -40,6 +40,7 @@ export function Topbar() {
                 <>
                   <Link href="/users">用户管理</Link>
                   <Link href="/agent">AI 客服</Link>
+                  <Link href="/usage">用量统计</Link>
                 </>
               )}
             </nav>

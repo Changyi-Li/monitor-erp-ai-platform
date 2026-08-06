@@ -44,6 +44,7 @@ export const AUDIT_ACTIONS = {
   KB_RESTORE: 'kb.restore',
   AGENT_CONVERSATION_CREATE: 'agent.conversation_create',
   AGENT_CHAT: 'agent.chat',
+  USAGE_VIEW: 'usage.view',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

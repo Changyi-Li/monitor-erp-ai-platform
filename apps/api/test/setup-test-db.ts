@@ -29,7 +29,7 @@ export async function resetTestDb(): Promise<void> {
     `alter role "app_tenant_user" with login password '${APP_ROLE_TEST_PASSWORD}'`,
   );
   // 单语句 TRUNCATE 全部表（含 FK 引用表）
-  await client`TRUNCATE users, refresh_tokens, customers, projects, user_tenants, project_members, issues, issue_comments, issue_links, blueprints, blueprint_versions, project_stages, project_risks, meeting_minutes, minute_attachments, kb_documents, kb_document_versions, document_syncs, ai_conversations, ai_messages, langgraph_checkpoints, langgraph_checkpoint_writes, audit_logs`;
+  await client`TRUNCATE users, refresh_tokens, customers, projects, user_tenants, project_members, issues, issue_comments, issue_links, blueprints, blueprint_versions, project_stages, project_risks, meeting_minutes, minute_attachments, kb_documents, kb_document_versions, document_syncs, ai_conversations, ai_messages, langgraph_checkpoints, langgraph_checkpoint_writes, ai_usage, audit_logs`;
   await client.end();
 }
 

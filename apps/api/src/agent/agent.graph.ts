@@ -5,6 +5,7 @@ import {
   START,
   StateGraph,
   type BaseCheckpointSaver,
+  type LangGraphRunnableConfig,
 } from '@langchain/langgraph';
 import type { DocumentIndexPort } from '../adapters/indexing/document-index.port';
 import type { LLMClient } from '../adapters/llm/llm-client.port';
@@ -92,7 +93,7 @@ function buildRetrieveNode(idx: DocumentIndexPort) {
 
 /** 生成节点：组装 prompt（检索文档 + 历史 + 引用指令）→ LLMClient（memory fake 确定性） */
 function buildGenerateNode(llm: LLMClient) {
-  return async (state: AgentState): Promise<Partial<typeof AgentState.Update>> => {
+  return async (state: AgentState, config: LangGraphRunnableConfig): Promise<Partial<typeof AgentState.Update>> => {
     const docsText =
       state.retrieved
         .map((d) => `[${d.index}] 标题：${d.title}（摘要：${d.content.slice(0, 200)}）`)
@@ -117,6 +118,13 @@ function buildGenerateNode(llm: LLMClient) {
         ...state.history.map((m) => ({ role: m.role, content: m.content })),
         { role: 'user', content: state.query },
       ],
+      // issue #23 用量计量：场景标注 + 会话追溯（UsageRecording wrapper 落 ai_usage；
+      // thread_id = aiConversations.id，同服务会话归属与回看口径）
+      context: {
+        scene: 'agent',
+        conversationId:
+          typeof config.configurable?.thread_id === 'string' ? config.configurable.thread_id : undefined,
+      },
     });
     return {
       answer: content,

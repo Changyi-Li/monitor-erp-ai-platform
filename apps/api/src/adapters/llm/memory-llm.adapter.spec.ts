@@ -84,4 +84,16 @@ describe('memory LLM fake：确定性回答', () => {
     expect(content).toContain('未找到相关信息');
     expect(content).not.toContain('[1]');
   });
+
+  it('返回确定性 usage（model=memory，token=ceil(字符数/4)）', async () => {
+    const messages = [
+      { role: 'system', content: systemWithDocs },
+      { role: 'user', content: '如何登录？' },
+    ];
+    const { content, usage } = await llm.chat({ messages });
+    expect(usage.model).toBe('memory');
+    const inputChars = messages.reduce((s, m) => s + m.content.length, 0);
+    expect(usage.inputTokens).toBe(Math.ceil(inputChars / 4));
+    expect(usage.outputTokens).toBe(Math.ceil(content.length / 4));
+  });
 });
