@@ -15,6 +15,7 @@ import { TenantInterceptor } from './database/tenant.interceptor';
 import { BlueprintsModule } from './blueprints/blueprints.module';
 import { IssuesModule } from './issues/issues.module';
 import { ProjectsModule } from './projects/projects.module';
+import { StagesModule } from './stages/stages.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ProjectsModule } from './projects/projects.module';
     ProjectsModule,
     IssuesModule,
     BlueprintsModule,
+    StagesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

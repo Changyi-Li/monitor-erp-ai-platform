@@ -23,6 +23,13 @@ export const AUDIT_ACTIONS = {
   BLUEPRINT_CREATE: 'blueprint.create',
   BLUEPRINT_UPDATE: 'blueprint.update',
   BLUEPRINT_PUBLISH: 'blueprint.publish',
+  STAGE_CREATE: 'stage.create',
+  STAGE_UPDATE: 'stage.update',
+  STAGE_DELETE: 'stage.delete',
+  STAGE_REORDER: 'stage.reorder',
+  RISK_CREATE: 'risk.create',
+  RISK_UPDATE: 'risk.update',
+  RISK_DELETE: 'risk.delete',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

@@ -56,6 +56,19 @@ describe('权限矩阵', () => {
     expect(can('regular_user', 'blueprint:manage')).toBe(false);
   });
 
+  it('#17：阶段查看全员（§2.4 line 77），阶段/风险管理=仅内部（§2.4 line 81）', () => {
+    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
+      expect(can(role as never, 'phase:view')).toBe(true);
+    }
+    for (const permission of ['phase:manage', 'risk:manage'] as const) {
+      expect(can('super_admin', permission)).toBe(true);
+      expect(can('internal', permission)).toBe(true);
+      expect(can('project_manager', permission)).toBe(false);
+      expect(can('key_user', permission)).toBe(false);
+      expect(can('regular_user', permission)).toBe(false);
+    }
+  });
+
   it('#15：状态流转=内部专属（spec 37 内部处理问题；客户侧无流转）', () => {
     expect(can('super_admin', 'issue:transition')).toBe(true);
     expect(can('internal', 'issue:transition')).toBe(true);

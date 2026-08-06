@@ -20,6 +20,8 @@ export const PERMISSIONS = [
   'blueprint:view',
   'blueprint:manage',
   'phase:view',
+  'phase:manage',
+  'risk:manage',
   'meeting:view',
   'issue:create',
   'issue:comment',
@@ -42,12 +44,15 @@ export type Permission = (typeof PERMISSIONS)[number];
  * 权限矩阵（spec §2.4）：功能 → 允许的角色集合。
  * 本期已强制：project:create / member:manage / user:manage / customer:create /
  * blueprint:view + blueprint:manage（#16 蓝图，维护仅内部）；
- * 其余（phase/meeting/issue/kb/manual/agent）定义先行，后续模块复用 can()。
+ * phase:view + phase:manage + risk:manage（#17 实施阶段/风险，维护仅内部）；
+ * 其余（meeting/issue/kb/manual/agent）定义先行，后续模块复用 can()。
  */
 export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = {
   'blueprint:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
   'blueprint:manage': ['super_admin', 'internal'], // spec §2.4 蓝图维护仅内部/超管
   'phase:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
+  'phase:manage': ['super_admin', 'internal'], // spec §2.4 line 81 阶段维护仅内部/超管
+  'risk:manage': ['super_admin', 'internal'], // spec §2.4 line 81 风险维护仅内部/超管（查看同 phase:view）
   'meeting:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
   'issue:create': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
   'issue:comment': ['super_admin', 'internal', 'project_manager', 'key_user'],

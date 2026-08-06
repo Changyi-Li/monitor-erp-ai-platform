@@ -24,8 +24,8 @@ export class ApiError extends Error {
 interface ApiFetchOptions<T> {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
-  /** 响应契约：返回体经 safeParse 校验 */
-  schema: z.ZodType<T>;
+  /** 响应契约：返回体经 safeParse 校验；省略 = 不校验（204/无 body 的端点，如 DELETE） */
+  schema?: z.ZodType<T>;
   /** 是否携带 Authorization 头（默认 true；refresh 场景传 false） */
   auth?: boolean;
 }
@@ -77,11 +77,12 @@ export async function apiFetch<T>(
     throw new ApiError(res.status, message);
   }
 
-  const parsed = opts.schema.safeParse(data);
-  if (!parsed.success) {
+  // 204/无 body（DELETE 等）跳过契约校验
+  const parsed = opts.schema?.safeParse(data);
+  if (parsed && !parsed.success) {
     throw new ApiError(500, '响应不符合契约');
   }
-  return parsed.data;
+  return (parsed?.data ?? undefined) as T;
 }
 
 /** 轮换式刷新：成功返回 true 并写入新令牌 */

@@ -365,6 +365,98 @@ export const blueprintVersions = pgTable(
 ).enableRLS();
 
 /**
+ * 实施阶段（issue #17，spec §3.3）：基于标准阶段模板在项目内实例化，可增删/排序/状态流转。
+ * 状态 = 未开始/进行中/已完成/已暂停（应用层自由流转，无 issues 式严格状态机）。
+ * 数据边界 = 项目：tenantId 冗余供 RLS（同 projects/issues 模式）；应用层再校验成员 + 内部维护权限。
+ */
+export const projectStages = pgTable(
+  'project_stages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    templateKey: text('template_key'), // 来源模板 key（STAGE_TEMPLATES 常量；自定义阶段为 null）
+    name: text('name').notNull(),
+    description: text('description'),
+    // 'not_started' | 'in_progress' | 'completed' | 'paused'（未开始/进行中/已完成/已暂停）
+    status: text('status').notNull().default('not_started'),
+    sortOrder: integer('sort_order').notNull().default(0), // 项目内排序（重排时整体重写）
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('project_stages_tenant_idx').on(t.tenantId),
+    index('project_stages_project_idx').on(t.projectId),
+    check('project_stages_status_check', sql`${t.status} in ('not_started','in_progress','completed','paused')`),
+    pgPolicy('project_stages_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('project_stages_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * 风险点（issue #17，spec §3.3）：项目级，可关联具体阶段（stageId set null——阶段删除后风险保留）。
+ * 字段：描述、等级（高/中/低）、状态（未处理/处理中/已解决）、负责人（内部）。
+ */
+export const projectRisks = pgTable(
+  'project_risks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    stageId: uuid('stage_id').references(() => projectStages.id, { onDelete: 'set null' }), // 关联阶段
+    description: text('description').notNull(),
+    // 'high' | 'medium' | 'low'（高/中/低）
+    level: text('level').notNull().default('medium'),
+    // 'open' | 'in_progress' | 'resolved'（未处理/处理中/已解决）
+    status: text('status').notNull().default('open'),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }), // 负责人（内部）
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('project_risks_tenant_idx').on(t.tenantId),
+    index('project_risks_project_idx').on(t.projectId),
+    index('project_risks_stage_idx').on(t.stageId),
+    check('project_risks_level_check', sql`${t.level} in ('high','medium','low')`),
+    check('project_risks_status_check', sql`${t.status} in ('open','in_progress','resolved')`),
+    pgPolicy('project_risks_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('project_risks_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
  * 审计日志（登录/关键数据访问/权限变更，spec §11 安全要求）。
  * 平台级表不加 RLS：受限角色经 ALTER DEFAULT PRIVILEGES 自动获得 CRUD。
  */
@@ -394,4 +486,6 @@ export type IssueRow = typeof issues.$inferSelect;
 export type IssueCommentRow = typeof issueComments.$inferSelect;
 export type BlueprintRow = typeof blueprints.$inferSelect;
 export type BlueprintVersionRow = typeof blueprintVersions.$inferSelect;
+export type ProjectStageRow = typeof projectStages.$inferSelect;
+export type ProjectRiskRow = typeof projectRisks.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;
