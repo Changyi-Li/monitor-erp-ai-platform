@@ -113,6 +113,11 @@ export default function ProjectDetailPage() {
       {detail.project.description && (
         <p style={{ color: '#6b7280' }}>{detail.project.description}</p>
       )}
+      <p style={{ marginTop: 8 }}>
+        <Link href={`/projects/${id}/issues`} style={{ color: '#2563eb' }}>
+          问题清单 →
+        </Link>
+      </p>
 
       {canManage && (
         <section style={{ marginTop: 24 }}>

@@ -12,6 +12,7 @@ import { AuditModule } from './audit/audit.module';
 import { CustomersModule } from './customers/customers.module';
 import { DrizzleModule } from './database/database.module';
 import { TenantInterceptor } from './database/tenant.interceptor';
+import { IssuesModule } from './issues/issues.module';
 import { ProjectsModule } from './projects/projects.module';
 
 @Module({
@@ -29,6 +30,7 @@ import { ProjectsModule } from './projects/projects.module';
     AuthModule,
     CustomersModule,
     ProjectsModule,
+    IssuesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

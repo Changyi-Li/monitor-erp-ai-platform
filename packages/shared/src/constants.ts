@@ -9,6 +9,22 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const PROJECT_ROLES = ['project_manager', 'key_user', 'regular_user'] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
+/** 问题类型（issue.type，spec §3.5） */
+export const ISSUE_TYPES = ['bug', 'feature', 'question'] as const;
+export type IssueType = (typeof ISSUE_TYPES)[number];
+
+/** 问题分类（issue.category：功能/数据/使用/技术/优化） */
+export const ISSUE_CATEGORIES = ['function', 'data', 'usage', 'technical', 'optimization'] as const;
+export type IssueCategory = (typeof ISSUE_CATEGORIES)[number];
+
+/** 问题优先级 */
+export const ISSUE_PRIORITIES = ['high', 'medium', 'low'] as const;
+export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
+
+/** 问题状态机（严格线性前进：新建→处理中→已解决→已关闭） */
+export const ISSUE_STATUSES = ['new', 'in_progress', 'resolved', 'closed'] as const;
+export type IssueStatus = (typeof ISSUE_STATUSES)[number];
+
 export const DEFAULT_ACCESS_TOKEN_TTL = '15m';
 export const DEFAULT_REFRESH_TOKEN_TTL = '30d';
 

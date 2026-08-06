@@ -10,5 +10,7 @@ import { ProjectsService } from './projects.service';
   imports: [AuthModule],
   controllers: [ProjectsController, MembersController],
   providers: [ProjectsService, MembersService],
+  // 导出 MembersService：IssuesModule 等依赖项目成员角色解析
+  exports: [MembersService],
 })
 export class ProjectsModule {}

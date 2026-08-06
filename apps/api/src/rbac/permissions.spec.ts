@@ -45,6 +45,14 @@ describe('权限矩阵', () => {
     }
   });
 
+  it('#15：状态流转=内部专属（spec 37 内部处理问题；客户侧无流转）', () => {
+    expect(can('super_admin', 'issue:transition')).toBe(true);
+    expect(can('internal', 'issue:transition')).toBe(true);
+    expect(can('project_manager', 'issue:transition')).toBe(false);
+    expect(can('key_user', 'issue:transition')).toBe(false);
+    expect(can('regular_user', 'issue:transition')).toBe(false);
+  });
+
   it('本期强制项：建项目=内部+；建客户=仅超管；编辑客户=内部+；成员管理=PM+', () => {
     expect(can('internal', 'project:create')).toBe(true);
     expect(can('project_manager', 'project:create')).toBe(false);

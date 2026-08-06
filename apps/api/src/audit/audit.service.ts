@@ -16,6 +16,10 @@ export const AUDIT_ACTIONS = {
   MEMBER_ADD: 'member.add',
   MEMBER_DEACTIVATE: 'member.deactivate',
   MEMBER_ACTIVATE: 'member.activate',
+  ISSUE_CREATE: 'issue.create',
+  ISSUE_UPDATE: 'issue.update',
+  ISSUE_TRANSITION: 'issue.transition',
+  ISSUE_COMMENT: 'issue.comment',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

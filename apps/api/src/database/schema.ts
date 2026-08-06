@@ -182,6 +182,95 @@ export const projectMembers = pgTable(
 );
 
 /**
+ * 问题清单（issue #15，spec §3.5）：项目内待办/缺陷条目。
+ * 数据边界 = 项目：tenantId 冗余存储供 RLS（同 projects 模式），应用层再校验项目成员。
+ * 枚举 = text + check()（仓库无 pgEnum 先例，同 project_members.role）。
+ */
+export const issues = pgTable(
+  'issues',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    // 'bug' | 'feature' | 'question'（缺陷/需求/咨询）
+    type: text('type').notNull().default('bug'),
+    // 'function' | 'data' | 'usage' | 'technical' | 'optimization'（功能/数据/使用/技术/优化）
+    category: text('category').notNull().default('function'),
+    // 'high' | 'medium' | 'low'
+    priority: text('priority').notNull().default('medium'),
+    // 严格线性状态机：'new' → 'in_progress' → 'resolved' → 'closed'（应用层 canTransition 强制）
+    status: text('status').notNull().default('new'),
+    reporterId: uuid('reporter_id').references(() => users.id, { onDelete: 'set null' }), // 提交人
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }), // 内部负责人
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('issues_tenant_idx').on(t.tenantId),
+    index('issues_project_idx').on(t.projectId),
+    check('issues_type_check', sql`${t.type} in ('bug','feature','question')`),
+    check('issues_category_check', sql`${t.category} in ('function','data','usage','technical','optimization')`),
+    check('issues_priority_check', sql`${t.priority} in ('high','medium','low')`),
+    check('issues_status_check', sql`${t.status} in ('new','in_progress','resolved','closed')`),
+    pgPolicy('issues_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('issues_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/** 问题评论（issue #15）：作者名经应用层 join users 补 displayName 返回。 */
+export const issueComments = pgTable(
+  'issue_comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
+    content: text('content').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('issue_comments_issue_idx').on(t.issueId),
+    index('issue_comments_tenant_idx').on(t.tenantId),
+    pgPolicy('issue_comments_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('issue_comments_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
  * 审计日志（登录/关键数据访问/权限变更，spec §11 安全要求）。
  * 平台级表不加 RLS：受限角色经 ALTER DEFAULT PRIVILEGES 自动获得 CRUD。
  */
@@ -207,4 +296,6 @@ export type CustomerRow = typeof customers.$inferSelect;
 export type UserTenantRow = typeof userTenants.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
 export type ProjectMemberRow = typeof projectMembers.$inferSelect;
+export type IssueRow = typeof issues.$inferSelect;
+export type IssueCommentRow = typeof issueComments.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;
