@@ -35,6 +35,11 @@ export const AUDIT_ACTIONS = {
   MINUTE_DELETE: 'minute.delete',
   ATTACHMENT_UPLOAD: 'attachment.upload',
   ATTACHMENT_DELETE: 'attachment.delete',
+  KB_CREATE: 'kb.create',
+  KB_UPDATE: 'kb.update',
+  KB_PUBLISH: 'kb.publish',
+  KB_ARCHIVE: 'kb.archive',
+  KB_RESTORE: 'kb.restore',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

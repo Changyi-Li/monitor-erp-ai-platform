@@ -31,6 +31,14 @@ export default function HomePage() {
         <li>角色：{userRoleLabel(user.role)}</li>
         <li>注册时间：{new Date(user.createdAt).toLocaleString()}</li>
       </ul>
+      <p style={{ marginTop: 16, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <Link href="/kb" style={{ color: '#2563eb' }}>
+          知识库 →
+        </Link>
+        <Link href="/projects" style={{ color: '#2563eb' }}>
+          项目列表 →
+        </Link>
+      </p>
     </div>
   );
 }

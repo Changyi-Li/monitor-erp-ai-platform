@@ -57,6 +57,20 @@
       "when": 1785984076718,
       "tag": "0007_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785992430988,
+      "tag": "0008_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785992575131,
+      "tag": "0009_auth",
+      "breakpoints": true
     }
   ]
 }

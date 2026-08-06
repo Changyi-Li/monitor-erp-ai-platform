@@ -47,6 +47,18 @@ export type RiskLevel = (typeof RISK_LEVELS)[number];
 export const RISK_STATUSES = ['open', 'in_progress', 'resolved'] as const;
 export type RiskStatus = (typeof RISK_STATUSES)[number];
 
+/** 知识库文档分类（spec §4.1：操作手册/FAQ/最佳实践） */
+export const KB_CATEGORIES = ['manual', 'faq', 'best_practice'] as const;
+export type KbCategory = (typeof KB_CATEGORIES)[number];
+
+/** 知识库文档形态（spec §4.1：在线 Markdown 或上传文件） */
+export const KB_DOC_TYPES = ['markdown', 'file'] as const;
+export type KbDocType = (typeof KB_DOC_TYPES)[number];
+
+/** 知识库文档生命周期（草稿 → 已发布 → 已归档；归档即下架，可恢复） */
+export const KB_STATUSES = ['draft', 'published', 'archived'] as const;
+export type KbStatus = (typeof KB_STATUSES)[number];
+
 export const DEFAULT_ACCESS_TOKEN_TTL = '15m';
 export const DEFAULT_REFRESH_TOKEN_TTL = '30d';
 

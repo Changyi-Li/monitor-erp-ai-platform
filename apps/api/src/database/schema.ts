@@ -542,6 +542,92 @@ export const minuteAttachments = pgTable(
 ).enableRLS();
 
 /**
+ * 知识库文档（issue #19，spec §4.1/§4.3）：内部知识库 = 全局（不挂客户/项目——
+ * 客户知识库 = 内部 KB + 本项目文档是逻辑视图，spec §4.2）。
+ * 分类（操作手册/FAQ/最佳实践）+ 形态（在线 Markdown / 上传文件）+ 生命周期
+ * （草稿 → 已发布 → 已归档，归档即下架可恢复）。发布动作是 RAG 同步触发点（切片 11）。
+ * RLS 与项目级域不同（无 tenantId）：内部全权（读写）+ 已发布全员可读（含客户）。
+ */
+export const kbDocuments = pgTable(
+  'kb_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: text('title').notNull(),
+    // 'manual' | 'faq' | 'best_practice'（操作手册/FAQ/最佳实践）
+    category: text('category').notNull(),
+    // 'markdown' | 'file'（在线编辑仅 Markdown；文件类为上传 + 覆盖更新）
+    docType: text('doc_type').notNull(),
+    // 'draft' | 'published' | 'archived'
+    status: text('status').notNull().default('draft'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }), // 创建人
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('kb_documents_category_status_idx').on(t.category, t.status),
+    pgPolicy('kb_documents_internal_manage', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+    pgPolicy('kb_documents_read_published', {
+      as: 'permissive',
+      for: 'select',
+      to: appTenantUser,
+      using: sql`${t.status} = 'published'`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * 知识库文档版本（issue #19）：版本 = 全字段快照（title/category/body 或文件三件套），
+ * 发布时生成（versionNumber = max+1，1-based）；未发布草稿版本 versionNumber = null
+ * （Postgres unique 忽略 null，允许多个草稿行——service 层保证每文档最多一个草稿版本）。
+ * 文件类文档文件本体在对象存储（storageKey 指向 StoragePort），DB 只存元信息；
+ * 删文档级联删版本行（documentId onDelete cascade；storage 对象由 service 先删）。
+ */
+export const kbDocumentVersions = pgTable(
+  'kb_document_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => kbDocuments.id, { onDelete: 'cascade' }),
+    versionNumber: integer('version_number'), // 发布时分配；草稿版本为 null
+    isPublished: boolean('is_published').notNull().default(false),
+    title: text('title').notNull(), // 全字段快照（重新发布才生效对标题/分类同样成立）
+    category: text('category').notNull(),
+    body: text('body'), // Markdown 正文（markdown 类）
+    fileName: text('file_name'), // 文件类：原名/类型/字节数/storage key
+    contentType: text('content_type'),
+    size: integer('size'),
+    storageKey: text('storage_key'),
+    publishedById: uuid('published_by_id').references(() => users.id, { onDelete: 'set null' }),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('kb_document_versions_doc_version_unique').on(t.documentId, t.versionNumber),
+    index('kb_document_versions_doc_idx').on(t.documentId),
+    pgPolicy('kb_document_versions_internal_manage', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+    pgPolicy('kb_document_versions_read_published', {
+      as: 'permissive',
+      for: 'select',
+      to: appTenantUser,
+      using: sql`exists(select 1 from kb_documents d where d.id = ${t.documentId} and d.status = 'published')`,
+    }),
+  ],
+).enableRLS();
+
+/**
  * 审计日志（登录/关键数据访问/权限变更，spec §11 安全要求）。
  * 平台级表不加 RLS：受限角色经 ALTER DEFAULT PRIVILEGES 自动获得 CRUD。
  */
@@ -575,4 +661,6 @@ export type ProjectStageRow = typeof projectStages.$inferSelect;
 export type ProjectRiskRow = typeof projectRisks.$inferSelect;
 export type MeetingMinuteRow = typeof meetingMinutes.$inferSelect;
 export type MinuteAttachmentRow = typeof minuteAttachments.$inferSelect;
+export type KbDocumentRow = typeof kbDocuments.$inferSelect;
+export type KbDocumentVersionRow = typeof kbDocumentVersions.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;

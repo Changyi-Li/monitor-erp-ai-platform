@@ -7,3 +7,4 @@ export * from './issues';
 export * from './blueprints';
 export * from './stages';
 export * from './minutes';
+export * from './kb';

@@ -14,6 +14,7 @@ import { DrizzleModule } from './database/database.module';
 import { TenantInterceptor } from './database/tenant.interceptor';
 import { BlueprintsModule } from './blueprints/blueprints.module';
 import { IssuesModule } from './issues/issues.module';
+import { KbModule } from './kb/kb.module';
 import { MinutesModule } from './minutes/minutes.module';
 import { ProjectsModule } from './projects/projects.module';
 import { StagesModule } from './stages/stages.module';
@@ -37,6 +38,7 @@ import { StagesModule } from './stages/stages.module';
     BlueprintsModule,
     StagesModule,
     MinutesModule,
+    KbModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

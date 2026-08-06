@@ -80,6 +80,15 @@ describe('权限矩阵', () => {
     expect(can('regular_user', 'meeting:manage')).toBe(false);
   });
 
+  it('#19：知识库文档编辑=仅内部（§2.4 line 79「知识库文档编辑/操作手册生成 ✅」）；查看默认开放无 kb:view', () => {
+    for (const role of ['super_admin', 'internal']) {
+      expect(can(role as never, 'kb:edit')).toBe(true);
+    }
+    expect(can('project_manager', 'kb:edit')).toBe(false);
+    expect(can('key_user', 'kb:edit')).toBe(false);
+    expect(can('regular_user', 'kb:edit')).toBe(false);
+  });
+
   it('#15：状态流转=内部专属（spec 37 内部处理问题；客户侧无流转）', () => {
     expect(can('super_admin', 'issue:transition')).toBe(true);
     expect(can('internal', 'issue:transition')).toBe(true);
