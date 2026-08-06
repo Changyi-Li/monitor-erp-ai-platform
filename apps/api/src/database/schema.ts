@@ -3,6 +3,7 @@ import {
   boolean,
   char,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -457,6 +458,90 @@ export const projectRisks = pgTable(
 ).enableRLS();
 
 /**
+ * 会议纪要（issue #18，spec §3.4）：项目内会议记录。
+ * 结构化字段（主题/日期/参会人）+ 富文本正文（HTML）+ 附件（对象存储，DB 只存元信息）。
+ * 数据边界 = 项目：tenantId 冗余供 RLS（同 projects/issues 模式）；应用层再校验成员 + 内部维护权限。
+ */
+export const meetingMinutes = pgTable(
+  'meeting_minutes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    // date 模式默认 string（'YYYY-MM-DD'），DTO 无需 toISOString
+    meetingDate: date('meeting_date').notNull(),
+    participants: text('participants'), // 参会人（纯文本名单，Phase 1 不做用户关联）
+    body: text('body'), // 富文本正文（HTML）
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }), // 创建人
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('meeting_minutes_tenant_idx').on(t.tenantId),
+    index('meeting_minutes_project_idx').on(t.projectId),
+    pgPolicy('meeting_minutes_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('meeting_minutes_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * 纪要附件（issue #18）：文件本体在对象存储（storageKey 指向 StoragePort），DB 只存元信息。
+ * 删纪要级联删附件行（minuteId onDelete cascade；storage 对象由 service 先删）。
+ */
+export const minuteAttachments = pgTable(
+  'minute_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    minuteId: uuid('minute_id')
+      .notNull()
+      .references(() => meetingMinutes.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    storageKey: text('storage_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('minute_attachments_minute_idx').on(t.minuteId),
+    index('minute_attachments_tenant_idx').on(t.tenantId),
+    pgPolicy('minute_attachments_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('minute_attachments_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
  * 审计日志（登录/关键数据访问/权限变更，spec §11 安全要求）。
  * 平台级表不加 RLS：受限角色经 ALTER DEFAULT PRIVILEGES 自动获得 CRUD。
  */
@@ -488,4 +573,6 @@ export type BlueprintRow = typeof blueprints.$inferSelect;
 export type BlueprintVersionRow = typeof blueprintVersions.$inferSelect;
 export type ProjectStageRow = typeof projectStages.$inferSelect;
 export type ProjectRiskRow = typeof projectRisks.$inferSelect;
+export type MeetingMinuteRow = typeof meetingMinutes.$inferSelect;
+export type MinuteAttachmentRow = typeof minuteAttachments.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;

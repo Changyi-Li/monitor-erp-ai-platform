@@ -23,6 +23,7 @@ export const PERMISSIONS = [
   'phase:manage',
   'risk:manage',
   'meeting:view',
+  'meeting:manage',
   'issue:create',
   'issue:comment',
   'issue:manage',
@@ -54,6 +55,7 @@ export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = 
   'phase:manage': ['super_admin', 'internal'], // spec §2.4 line 81 阶段维护仅内部/超管
   'risk:manage': ['super_admin', 'internal'], // spec §2.4 line 81 风险维护仅内部/超管（查看同 phase:view）
   'meeting:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
+  'meeting:manage': ['super_admin', 'internal'], // spec §2.4 会议纪要维护仅内部/超管（查看=meeting:view 全员）
   'issue:create': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
   'issue:comment': ['super_admin', 'internal', 'project_manager', 'key_user'],
   'issue:manage': ['super_admin', 'internal', 'project_manager'],

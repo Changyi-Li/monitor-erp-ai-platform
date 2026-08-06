@@ -69,6 +69,17 @@ describe('权限矩阵', () => {
     }
   });
 
+  it('#18：会议纪要查看全员（§2.4 查看蓝图/实施阶段/会议纪要），维护=仅内部（§2.4 维护行）', () => {
+    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
+      expect(can(role as never, 'meeting:view')).toBe(true);
+    }
+    expect(can('super_admin', 'meeting:manage')).toBe(true);
+    expect(can('internal', 'meeting:manage')).toBe(true);
+    expect(can('project_manager', 'meeting:manage')).toBe(false);
+    expect(can('key_user', 'meeting:manage')).toBe(false);
+    expect(can('regular_user', 'meeting:manage')).toBe(false);
+  });
+
   it('#15：状态流转=内部专属（spec 37 内部处理问题；客户侧无流转）', () => {
     expect(can('super_admin', 'issue:transition')).toBe(true);
     expect(can('internal', 'issue:transition')).toBe(true);

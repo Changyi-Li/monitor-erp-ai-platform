@@ -30,6 +30,11 @@ export const AUDIT_ACTIONS = {
   RISK_CREATE: 'risk.create',
   RISK_UPDATE: 'risk.update',
   RISK_DELETE: 'risk.delete',
+  MINUTE_CREATE: 'minute.create',
+  MINUTE_UPDATE: 'minute.update',
+  MINUTE_DELETE: 'minute.delete',
+  ATTACHMENT_UPLOAD: 'attachment.upload',
+  ATTACHMENT_DELETE: 'attachment.delete',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

@@ -6,3 +6,4 @@ export * from './users';
 export * from './issues';
 export * from './blueprints';
 export * from './stages';
+export * from './minutes';

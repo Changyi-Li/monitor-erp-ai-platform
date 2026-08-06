@@ -126,6 +126,9 @@ export default function ProjectDetailPage() {
         <Link href={`/projects/${id}/issues`} style={{ color: '#2563eb' }}>
           问题清单 →
         </Link>
+        <Link href={`/projects/${id}/minutes`} style={{ color: '#2563eb' }}>
+          会议纪要 →
+        </Link>
       </p>
 
       {canManage && (
