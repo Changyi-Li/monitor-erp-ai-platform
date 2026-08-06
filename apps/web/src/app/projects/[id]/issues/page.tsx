@@ -22,13 +22,14 @@ import {
   ISSUE_TYPE_LABELS,
 } from '../../../../lib/issue-labels';
 
-const EMPTY_FILTERS = { type: '', category: '', priority: '', status: '' };
+const EMPTY_FILTERS = { type: '', category: '', priority: '', status: '', reporterId: '' };
 const EMPTY_FORM = { title: '', description: '', type: 'bug', category: 'function', priority: 'medium' };
 
 /**
- * 问题清单（issue #15 验收 ④ 前端）：
+ * 问题清单（issue #15 验收 ④ + issue #20 前端）：
  * - 所有项目成员 + 内部可见（后端 403 非成员）
- * - 筛选（类型/分类/优先级/状态）+ 标题搜索（300ms 防抖，同客户页模式）
+ * - 筛选（类型/分类/优先级/状态/提交人）+ 标题搜索（300ms 防抖，同客户页模式）
+ *   ——提交人下拉选项 = 当前列表数据去重（Phase 1 量小，无成员名单端点）
  * - 提交问题：viewerRole 非 null（即项目成员）均可提交（spec §2.4 提交=全员）
  */
 export default function IssuesPage() {
@@ -125,6 +126,15 @@ export default function IssuesPage() {
     );
   }
 
+  /** 提交人下拉：当前列表数据去重（reporterId + reporterName；filter 后非 null 需断言窄化） */
+  const reporters = Array.from(
+    new Map(
+      (data?.issues ?? [])
+        .filter((i) => i.reporterId !== null && i.reporterName)
+        .map((i) => [i.reporterId as string, i.reporterName] as const),
+    ).entries(),
+  );
+
   if (error) {
     return (
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -156,6 +166,17 @@ export default function IssuesPage() {
         {select('category', ['function', 'data', 'usage', 'technical', 'optimization'] as const, ISSUE_CATEGORY_LABELS)}
         {select('priority', ['high', 'medium', 'low'] as const, ISSUE_PRIORITY_LABELS)}
         {select('status', ['new', 'in_progress', 'resolved', 'closed'] as const, ISSUE_STATUS_LABELS)}
+        <select
+          value={filters.reporterId}
+          onChange={(e) => setFilters({ ...filters, reporterId: e.target.value })}
+        >
+          <option value="">全部提交人</option>
+          {reporters.map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+        </select>
         <input
           placeholder="搜索标题…"
           value={search}
@@ -254,7 +275,8 @@ export default function IssuesPage() {
                   <span style={{ display: 'flex', gap: 8, alignItems: 'center', whiteSpace: 'nowrap' }}>
                     <span style={{ color: '#6b7280', fontSize: 13 }}>
                       {ISSUE_TYPE_LABELS[issue.type]} · {ISSUE_CATEGORY_LABELS[issue.category]} ·{' '}
-                      优先级{ISSUE_PRIORITY_LABELS[issue.priority]}
+                      优先级{ISSUE_PRIORITY_LABELS[issue.priority]} · 提交人：
+                      {issue.reporterName ?? '（已删除）'}
                     </span>
                     <span
                       style={{
@@ -287,7 +309,7 @@ export default function IssuesPage() {
             </li>
           ))}
           {data.issues.length === 0 && (
-            <li style={{ color: '#6b7280' }}>暂无问题{search || filters.type || filters.category || filters.priority || filters.status ? '（试试调整筛选）' : '，提交第一个问题吧'}</li>
+            <li style={{ color: '#6b7280' }}>暂无问题{search || filters.type || filters.category || filters.priority || filters.status || filters.reporterId ? '（试试调整筛选）' : '，提交第一个问题吧'}</li>
           )}
         </ul>
       )}

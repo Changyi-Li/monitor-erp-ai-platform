@@ -1,5 +1,6 @@
 import type {
   IssueCategory,
+  IssueLinkTargetType,
   IssuePriority,
   IssueStatus,
   IssueType,
@@ -31,4 +32,11 @@ export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   in_progress: '处理中',
   resolved: '已解决',
   closed: '已关闭',
+};
+
+/** 问题关联目标类型（issue #20，spec 42） */
+export const ISSUE_LINK_TARGET_LABELS: Record<IssueLinkTargetType, string> = {
+  blueprint: '蓝图',
+  minute: '会议纪要',
+  kb_document: '知识库文档',
 };

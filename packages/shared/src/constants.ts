@@ -25,6 +25,10 @@ export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 export const ISSUE_STATUSES = ['new', 'in_progress', 'resolved', 'closed'] as const;
 export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 
+/** 问题关联目标类型（issue_links.targetType，spec 42「关联蓝图/功能/文档」；功能无独立实体，见 ADR 0009） */
+export const ISSUE_LINK_TARGETS = ['blueprint', 'minute', 'kb_document'] as const;
+export type IssueLinkTargetType = (typeof ISSUE_LINK_TARGETS)[number];
+
 /** 实施阶段状态（spec §3.3：未开始/进行中/已完成/已暂停；应用层自由流转） */
 export const STAGE_STATUSES = ['not_started', 'in_progress', 'completed', 'paused'] as const;
 export type StageStatus = (typeof STAGE_STATUSES)[number];

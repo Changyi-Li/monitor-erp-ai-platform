@@ -273,6 +273,51 @@ export const issueComments = pgTable(
 ).enableRLS();
 
 /**
+ * 问题关联（issue #20，spec 42「关联蓝图/功能/文档」）：多态关联表——
+ * 目标可为蓝图（blueprint）/ 会议纪要（minute）/ 知识库文档（kb_document）。
+ * 无 FK 到目标（跨表多态无法表达 FK），service 层校验存在性 + 项目归属
+ * （blueprint/minute 须同项目；kb 全局文档走 RLS 天然过滤：内部全见、客户只见已发布）；
+ * unique(issueId, targetType, targetId) 防重复关联。
+ */
+export const issueLinks = pgTable(
+  'issue_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }), // 链接随问题删
+    // 'blueprint' | 'minute' | 'kb_document'
+    targetType: text('target_type').notNull(),
+    targetId: uuid('target_id').notNull(), // 无 FK（多态）
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('issue_links_issue_target_unique').on(t.issueId, t.targetType, t.targetId),
+    index('issue_links_issue_idx').on(t.issueId),
+    index('issue_links_tenant_idx').on(t.tenantId),
+    check('issue_links_target_type_check', sql`${t.targetType} in ('blueprint','minute','kb_document')`),
+    pgPolicy('issue_links_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('issue_links_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
  * 蓝图（issue #16，spec §3.2）：一个项目一份（projectId unique），带版本控制。
  * 当前内容可编辑（工作区）；发布时整体快照到 blueprint_versions（版本 = 文件 + 结构化内容一致快照）。
  * draw.io 文件存对象存储（key 指向 StoragePort），DB 只存 key + 元信息。
@@ -655,6 +700,7 @@ export type ProjectRow = typeof projects.$inferSelect;
 export type ProjectMemberRow = typeof projectMembers.$inferSelect;
 export type IssueRow = typeof issues.$inferSelect;
 export type IssueCommentRow = typeof issueComments.$inferSelect;
+export type IssueLinkRow = typeof issueLinks.$inferSelect;
 export type BlueprintRow = typeof blueprints.$inferSelect;
 export type BlueprintVersionRow = typeof blueprintVersions.$inferSelect;
 export type ProjectStageRow = typeof projectStages.$inferSelect;

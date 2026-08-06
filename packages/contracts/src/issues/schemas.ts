@@ -1,5 +1,6 @@
 import {
   ISSUE_CATEGORIES,
+  ISSUE_LINK_TARGETS,
   ISSUE_PRIORITIES,
   ISSUE_STATUSES,
   ISSUE_TYPES,
@@ -21,11 +22,34 @@ export const IssueSchema = z.object({
   priority: z.enum(ISSUE_PRIORITIES),
   status: z.enum(ISSUE_STATUSES),
   reporterId: z.uuid().nullable(),
+  reporterName: z.string().nullable(), // 提交人姓名（join users；删除 → null）
   assigneeId: z.uuid().nullable().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
 export type Issue = z.output<typeof IssueSchema>;
+
+/** 问题关联（issue #20，spec 42「关联蓝图/功能/文档」）：多态目标 + 展示用标题摘要 */
+export const IssueLinkSchema = z.object({
+  id: z.uuid(),
+  issueId: z.uuid(),
+  targetType: z.enum(ISSUE_LINK_TARGETS),
+  targetId: z.uuid(),
+  targetTitle: z.string().nullable(), // blueprint → drawio 文件名；minute/kb → 标题；目标不可见（RLS 挡）→ null
+  createdBy: z.object({ id: z.uuid(), displayName: z.string() }).nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type IssueLink = z.output<typeof IssueLinkSchema>;
+
+/** 关联请求（spec 42：issue:manage = 内部 + PM） */
+export const IssueLinkRequestSchema = z.object({
+  targetType: z.enum(ISSUE_LINK_TARGETS, { error: '关联目标类型必须是 蓝图/会议纪要/知识库文档' }),
+  targetId: z.uuid({ error: '关联目标 id 非法' }),
+});
+export type IssueLinkRequest = z.output<typeof IssueLinkRequestSchema>;
+
+export const IssueLinkResponseSchema = z.object({ link: IssueLinkSchema });
+export type IssueLinkResponse = z.output<typeof IssueLinkResponseSchema>;
 
 /** 问题评论（列表内嵌在问题详情，作者名 join users） */
 export const IssueCommentSchema = z.object({
@@ -38,12 +62,13 @@ export const IssueCommentSchema = z.object({
 });
 export type IssueComment = z.output<typeof IssueCommentSchema>;
 
-/** 问题列表查询参数：四枚举筛选 + 标题搜索（非法枚举值 → 400） */
+/** 问题列表查询参数：四枚举筛选 + 提交人 + 标题搜索（非法枚举值/uuid → 400） */
 export const IssuesListQuerySchema = z.object({
   type: z.enum(ISSUE_TYPES).optional(),
   category: z.enum(ISSUE_CATEGORIES).optional(),
   priority: z.enum(ISSUE_PRIORITIES).optional(),
   status: z.enum(ISSUE_STATUSES).optional(),
+  reporterId: z.uuid().optional(), // spec 41「按提交人筛选」
   search: z.string().trim().max(128).optional(),
 });
 export type IssuesListQuery = z.output<typeof IssuesListQuerySchema>;
@@ -59,6 +84,7 @@ export const IssueGetResponseSchema = z.object({
   issue: IssueSchema,
   viewerRole: ProjectViewerRoleSchema,
   comments: z.array(IssueCommentSchema),
+  links: z.array(IssueLinkSchema), // 关联对象（全员可见；targetTitle 按 RLS 可见性）
 });
 export type IssueGetResponse = z.output<typeof IssueGetResponseSchema>;
 

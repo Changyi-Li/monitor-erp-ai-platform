@@ -5,13 +5,19 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   AssigneesListResponseSchema,
+  BlueprintGetResponseSchema,
   IssueGetResponseSchema,
+  IssueLinkResponseSchema,
   IssueUpdateResponseSchema,
+  KbListResponseSchema,
+  MinutesListResponseSchema,
   type AssigneesListResponse,
   type IssueGetResponse,
+  type IssueLink,
 } from '@monitor/contracts';
 import type {
   IssueCategory,
+  IssueLinkTargetType,
   IssuePriority,
   IssueStatus,
   IssueType,
@@ -19,6 +25,7 @@ import type {
 import { apiFetch, errorMessage } from '../../../../../lib/api';
 import {
   ISSUE_CATEGORY_LABELS,
+  ISSUE_LINK_TARGET_LABELS,
   ISSUE_PRIORITY_LABELS,
   ISSUE_STATUS_LABELS,
   ISSUE_TYPE_LABELS,
@@ -39,10 +46,12 @@ const TRANSITION_BUTTONS: Partial<Record<IssueStatus, string>> = {
 const EMPTY_EDIT = { title: '', description: '', type: 'bug', category: 'function', priority: 'medium' };
 
 /**
- * 问题详情（issue #15 验收 ④）：
- * - viewerRole 驱动权限：流转=内部（spec 37）、编辑/指派=PM+（spec 38）、
+ * 问题详情（issue #15 验收 ④ + issue #20 前端）：
+ * - viewerRole 驱动权限：流转=内部（spec 37）、编辑/指派/关联=PM+（spec 38）、
  *   评论=PM/KeyUser/内部（spec §2.4，普通用户只读）
  * - 评论列表内嵌（详情响应带 comments + 作者名）
+ * - 关联对象区（issue #20，spec 42）：蓝图/会议纪要/知识库文档——全员可见 + 跳转链接；
+ *   PM+ 可添加（目标下拉 = 复用对应列表端点）/解除
  * - 操作成功后重新拉详情刷新
  */
 export default function IssueDetailPage() {
@@ -58,6 +67,11 @@ export default function IssueDetailPage() {
   const [editForm, setEditForm] = useState(EMPTY_EDIT);
   const [assigneeId, setAssigneeId] = useState('');
   const [saving, setSaving] = useState(false);
+  // issue #20：添加关联表单（目标下拉按类型拉对应列表端点）
+  const [linkType, setLinkType] = useState<IssueLinkTargetType>('blueprint');
+  const [linkTargets, setLinkTargets] = useState<{ id: string; label: string }[]>([]);
+  const [linkTargetId, setLinkTargetId] = useState('');
+  const [addingLink, setAddingLink] = useState(false);
 
   const viewerRole = detail?.viewerRole ?? null;
   const issue = detail?.issue;
@@ -178,6 +192,79 @@ export default function IssueDetailPage() {
     }
   }
 
+  /** 关联目标下拉数据源（issue #20）：复用对应列表端点（蓝图项目唯一 → 单对象） */
+  async function loadLinkTargets(type: IssueLinkTargetType) {
+    try {
+      if (type === 'blueprint') {
+        const res = await apiFetch(`/api/projects/${id}/blueprints`, {
+          schema: BlueprintGetResponseSchema,
+        });
+        setLinkTargets(res.blueprint ? [{ id: res.blueprint.id, label: res.blueprint.drawio?.name ?? '蓝图' }] : []);
+      } else if (type === 'minute') {
+        const res = await apiFetch(`/api/projects/${id}/minutes`, {
+          schema: MinutesListResponseSchema,
+        });
+        setLinkTargets(res.minutes.map((m) => ({ id: m.id, label: m.title })));
+      } else {
+        const res = await apiFetch('/api/kb/documents', { schema: KbListResponseSchema });
+        setLinkTargets(res.documents.map((d) => ({ id: d.id, label: d.title })));
+      }
+      setLinkTargetId('');
+    } catch (err) {
+      setLinkTargets([]);
+      setActionError(errorMessage(err));
+    }
+  }
+
+  /** 添加关联（PM+，issue:manage） */
+  async function handleAddLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!linkTargetId) {
+      return;
+    }
+    setAddingLink(true);
+    setActionError('');
+    try {
+      await apiFetch(`/api/projects/${id}/issues/${issueId}/links`, {
+        method: 'POST',
+        body: { targetType: linkType, targetId: linkTargetId },
+        schema: IssueLinkResponseSchema,
+      });
+      await load();
+    } catch (err) {
+      setActionError(errorMessage(err));
+    } finally {
+      setAddingLink(false);
+    }
+  }
+
+  /** 解除关联（PM+，issue:manage） */
+  async function handleRemoveLink(l: IssueLink) {
+    if (!window.confirm(`解除与「${l.targetTitle ?? '该对象'}」的关联？`)) {
+      return;
+    }
+    setActionError('');
+    try {
+      await apiFetch(`/api/projects/${id}/issues/${issueId}/links/${l.id}`, {
+        method: 'DELETE',
+      });
+      await load();
+    } catch (err) {
+      setActionError(errorMessage(err));
+    }
+  }
+
+  /** 关联对象跳转链接（蓝图项目唯一；纪要/知识库 → 详情页） */
+  function linkHref(l: IssueLink): string {
+    if (l.targetType === 'blueprint') {
+      return `/projects/${id}/blueprints`;
+    }
+    if (l.targetType === 'minute') {
+      return `/projects/${id}/minutes/${l.targetId}`;
+    }
+    return `/kb/${l.targetId}`;
+  }
+
   if (error) {
     return (
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -232,7 +319,7 @@ export default function IssueDetailPage() {
         <dt style={{ color: '#6b7280' }}>优先级</dt>
         <dd style={{ margin: 0 }}>{ISSUE_PRIORITY_LABELS[issue.priority]}</dd>
         <dt style={{ color: '#6b7280' }}>提交人</dt>
-        <dd style={{ margin: 0 }}>{issue.reporterId ? '项目成员' : '（已删除）'}</dd>
+        <dd style={{ margin: 0 }}>{issue.reporterName ?? '（已删除）'}</dd>
         <dt style={{ color: '#6b7280' }}>负责人</dt>
         <dd style={{ margin: 0 }}>
           {issue.assigneeId
@@ -343,6 +430,93 @@ export default function IssueDetailPage() {
           </div>
         </form>
       )}
+
+      <section style={{ marginTop: 24 }}>
+        <h3>关联对象</h3>
+        {detail.links.length === 0 ? (
+          <p style={{ color: '#6b7280' }}>暂无关联</p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 8 }}>
+            {detail.links.map((l) => (
+              <li
+                key={l.id}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    padding: '1px 8px',
+                    borderRadius: 999,
+                    background: '#f3f4f6',
+                    color: '#374151',
+                  }}
+                >
+                  {ISSUE_LINK_TARGET_LABELS[l.targetType]}
+                </span>
+                {l.targetTitle ? (
+                  <Link href={linkHref(l)} style={{ color: '#2563eb' }}>
+                    {l.targetTitle}
+                  </Link>
+                ) : (
+                  <span style={{ color: '#9ca3af' }}>（不可见）</span>
+                )}
+                <span style={{ color: '#6b7280', fontSize: 13, marginLeft: 'auto' }}>
+                  关联人：{l.createdBy?.displayName ?? '—'}
+                </span>
+                {canManage && (
+                  <button type="button" onClick={() => void handleRemoveLink(l)}>
+                    解除
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {canManage && (
+          <form
+            onSubmit={handleAddLink}
+            style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}
+          >
+            <select
+              value={linkType}
+              onChange={(e) => {
+                const t = e.target.value as IssueLinkTargetType;
+                setLinkType(t);
+                void loadLinkTargets(t);
+              }}
+            >
+              {Object.entries(ISSUE_LINK_TARGET_LABELS).map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={linkTargetId}
+              onChange={(e) => setLinkTargetId(e.target.value)}
+              style={{ flex: 1, minWidth: 160 }}
+            >
+              <option value="">选择{ISSUE_LINK_TARGET_LABELS[linkType]}…</option>
+              {linkTargets.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <button type="submit" disabled={addingLink || !linkTargetId}>
+              {addingLink ? '关联中…' : '关联'}
+            </button>
+          </form>
+        )}
+      </section>
 
       <section style={{ marginTop: 24 }}>
         <h3>评论</h3>

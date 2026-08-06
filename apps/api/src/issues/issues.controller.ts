@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -17,6 +18,8 @@ import {
   IssueCreateRequestSchema,
   IssueCreateResponseSchema,
   IssueGetResponseSchema,
+  IssueLinkRequestSchema,
+  IssueLinkResponseSchema,
   IssueTransitionRequestSchema,
   IssueTransitionResponseSchema,
   IssueUpdateRequestSchema,
@@ -29,6 +32,8 @@ import {
   type IssueCreateRequest,
   type IssueCreateResponse,
   type IssueGetResponse,
+  type IssueLinkRequest,
+  type IssueLinkResponse,
   type IssueTransitionRequest,
   type IssueTransitionResponse,
   type IssueUpdateRequest,
@@ -122,5 +127,29 @@ export class IssuesController {
     @Body(new ZodValidationPipe(IssueCommentRequestSchema)) body: IssueCommentRequest,
   ): Promise<IssueCommentCreateResponse> {
     return this.issues.addComment(projectId, issueId, actor, body.content);
+  }
+
+  /** 关联蓝图/会议纪要/知识库文档（issue #20，spec 42；issue:manage = 内部 + PM） */
+  @Post(':issueId/links')
+  @ZodResponse(IssueLinkResponseSchema)
+  addLink(
+    @Param('projectId', new ZodValidationPipe(z.uuid())) projectId: string,
+    @Param('issueId', new ZodValidationPipe(z.uuid())) issueId: string,
+    @CurrentUser() actor: AuthUser,
+    @Body(new ZodValidationPipe(IssueLinkRequestSchema)) body: IssueLinkRequest,
+  ): Promise<IssueLinkResponse> {
+    return this.issues.addLink(projectId, issueId, actor, body);
+  }
+
+  /** 解除关联（204，先例 minutes/stages DELETE） */
+  @Delete(':issueId/links/:linkId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeLink(
+    @Param('projectId', new ZodValidationPipe(z.uuid())) projectId: string,
+    @Param('issueId', new ZodValidationPipe(z.uuid())) issueId: string,
+    @Param('linkId', new ZodValidationPipe(z.uuid())) linkId: string,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<void> {
+    return this.issues.removeLink(projectId, issueId, linkId, actor);
   }
 }

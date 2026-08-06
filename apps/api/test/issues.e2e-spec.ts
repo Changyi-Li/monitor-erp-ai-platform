@@ -8,6 +8,7 @@ import {
   IssueCommentCreateResponseSchema,
   IssueCreateResponseSchema,
   IssueGetResponseSchema,
+  IssueLinkResponseSchema,
   IssueTransitionResponseSchema,
   IssueUpdateResponseSchema,
   IssuesListResponseSchema,
@@ -20,14 +21,16 @@ import { AppModule } from '../src/app.module';
 import { connectOwner, resetTestDb } from './setup-test-db';
 
 /**
- * 问题清单 e2e（issue #15 验收）：
+ * 问题清单 e2e（issue #15 验收 + issue #20 增强）：
  * - ① 权限矩阵：提交=全员（内部+三客户角色）；越权 403（普通用户评论/修改、
  *   KeyUser 修改、非成员访问）；PM 修改/指派（仅内部用户候选）
  * - ② 状态机：严格线性 新建→处理中→已解决→已关闭；非法流转 400（跳过/回退/终态后）；
  *   流转=内部专属（客户角色 403）
  * - ③ 内部处理问题、指派内部负责人（验收 ②③ 同链）
- * - ④ 筛选/搜索（分类/优先级/状态/标题）
- * - 审计：issue.create/update/transition/comment 落 audit_logs
+ * - ④ 筛选/搜索（分类/优先级/状态/标题/提交人）+ 提交人姓名回显
+ * - ⑤（issue #20）关联蓝图/会议纪要/知识库文档：三种目标 201、跨项目/不存在/重复 400、
+ *   非 PM 403、客户 PM 仅可关联已发布 kb（RLS）、DELETE 204、详情 links 内嵌
+ * - 审计：issue.create/update/transition/comment/link/unlink 落 audit_logs
  */
 describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
   let app: NestFastifyApplication;
@@ -44,9 +47,16 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
   let regularUserId: string;
   let cidA: string;
   let projectAId: string;
+  let projectBId: string; // 同租户第二项目（跨项目关联 400 场景）
   let issue1Id: string; // regularUser 提交（bug/function/high）——全链流转
-  let issue2Id: string; // PM 提交（bug/data/medium）——非法流转/指派
+  let issue2Id: string; // PM 提交（bug/data/medium）——非法流转/指派/关联
   let issue3Id: string; // KeyUser 提交（feature/function/low）——指派校验
+  // issue #20 关联种子
+  let blueprintAId: string;
+  let blueprintBId: string; // 项目 B 的蓝图（跨项目关联 → 400）
+  let minuteAId: string;
+  let kbPublishedId: string; // 已发布 kb 文档（客户 PM 可关联）
+  let kbDraftId: string; // 草稿 kb 文档（客户 PM 关联 → RLS 挡 → 400）
 
   async function register(email: string): Promise<{ id: string; token: string }> {
     const res = await app.inject({
@@ -186,6 +196,34 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
     return { status: res.statusCode, body: res.json() };
   }
 
+  // issue #20：关联
+  async function addLink(
+    token: string,
+    issueId: string,
+    body: Record<string, unknown>,
+  ): Promise<{ status: number; body: unknown }> {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectAId}/issues/${issueId}/links`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: body,
+    });
+    return { status: res.statusCode, body: res.json() };
+  }
+
+  async function removeLink(
+    token: string,
+    issueId: string,
+    linkId: string,
+  ): Promise<{ status: number }> {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/projects/${projectAId}/issues/${issueId}/links/${linkId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return { status: res.statusCode };
+  }
+
   beforeAll(async () => {
     await resetTestDb();
     const moduleRef = await Test.createTestingModule({
@@ -271,6 +309,67 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
     issue1Id = i1.issue!.id;
     issue2Id = i2.issue!.id;
     issue3Id = i3.issue!.id;
+
+    // issue #20 种子：项目 B（同租户）+ 蓝图 A/B + 会议纪要 + kb 已发布/草稿
+    const createB = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      headers: { authorization: `Bearer ${internalToken}` },
+      payload: { tenantId: cidA, name: 'P-B2' },
+    });
+    expect(createB.statusCode).toBe(201);
+    projectBId = (createB.json() as { project: { id: string } }).project.id;
+    const drawio = {
+      name: '订单流程.drawio',
+      contentType: 'application/xml',
+      base64: Buffer.from('<mxfile/>').toString('base64'),
+    };
+    const bpA = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectAId}/blueprints`,
+      headers: { authorization: `Bearer ${internalToken}` },
+      payload: { drawio, moduleScope: '订单/库存模块' },
+    });
+    expect(bpA.statusCode).toBe(201);
+    blueprintAId = (bpA.json() as { blueprint: { id: string } }).blueprint.id;
+    const bpB = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectBId}/blueprints`,
+      headers: { authorization: `Bearer ${internalToken}` },
+      payload: { drawio },
+    });
+    expect(bpB.statusCode).toBe(201);
+    blueprintBId = (bpB.json() as { blueprint: { id: string } }).blueprint.id;
+    const minute = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectAId}/minutes`,
+      headers: { authorization: `Bearer ${internalToken}` },
+      payload: { title: '启动会纪要', meetingDate: '2026-08-01' },
+    });
+    expect(minute.statusCode).toBe(201);
+    minuteAId = (minute.json() as { minute: { id: string } }).minute.id;
+    const kbPublished = await app.inject({
+      method: 'POST',
+      url: '/api/kb/documents',
+      headers: { authorization: `Bearer ${internalToken}` },
+      payload: { docType: 'markdown', title: '登录问题 FAQ', category: 'faq', body: '# FAQ' },
+    });
+    expect(kbPublished.statusCode).toBe(201);
+    kbPublishedId = (kbPublished.json() as { document: { id: string } }).document.id;
+    const pub = await app.inject({
+      method: 'POST',
+      url: `/api/kb/documents/${kbPublishedId}/publish`,
+      headers: { authorization: `Bearer ${internalToken}` },
+    });
+    expect(pub.statusCode).toBe(200);
+    const kbDraft = await app.inject({
+      method: 'POST',
+      url: '/api/kb/documents',
+      headers: { authorization: `Bearer ${internalToken}` },
+      payload: { docType: 'markdown', title: '内部草稿', category: 'manual', body: '未发布' },
+    });
+    expect(kbDraft.statusCode).toBe(201);
+    kbDraftId = (kbDraft.json() as { document: { id: string } }).document.id;
   });
 
   afterAll(async () => {
@@ -418,6 +517,117 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
     });
   });
 
+  describe('验收 ④（issue #20）：提交人筛选与姓名回显', () => {
+    it('reporterId 筛选只返回该提交人的问题', async () => {
+      const res = await listIssues(internalToken, `?reporterId=${regularUserId}`);
+      expect(res.status).toBe(200);
+      expect(res.issues.length).toBeGreaterThanOrEqual(2);
+      expect(res.issues.every((i) => i.reporterId === regularUserId)).toBe(true);
+      expect(res.issues.map((i) => i.title)).toContain('登录页白屏');
+    });
+
+    it('列表/详情回显提交人姓名（join users）', async () => {
+      const list = await listIssues(internalToken);
+      const i1 = list.issues.find((i) => i.id === issue1Id);
+      expect(i1?.reporterName).toBe('ru');
+      const detail = await getIssue(regularUserToken, issue1Id);
+      const parsed = IssueGetResponseSchema.safeParse(detail.body);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data!.issue.reporterName).toBe('ru');
+    });
+
+    it('非法 reporterId → 400（契约层拦截）', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/projects/${projectAId}/issues?reporterId=not-a-uuid`,
+        headers: { authorization: `Bearer ${internalToken}` },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe('验收 ⑤（issue #20）：关联蓝图/会议纪要/知识库文档', () => {
+    it('三种目标关联 201，详情 links 内嵌 targetTitle + createdBy', async () => {
+      const bp = await addLink(internalToken, issue2Id, { targetType: 'blueprint', targetId: blueprintAId });
+      expect(bp.status).toBe(201);
+      const bpParsed = IssueLinkResponseSchema.safeParse(bp.body);
+      expect(bpParsed.success).toBe(true);
+      expect(bpParsed.data!.link.targetType).toBe('blueprint');
+      expect(bpParsed.data!.link.targetTitle).toBe('订单流程.drawio');
+
+      const minute = await addLink(internalToken, issue2Id, { targetType: 'minute', targetId: minuteAId });
+      expect(minute.status).toBe(201);
+      const mParsed = IssueLinkResponseSchema.safeParse(minute.body);
+      expect(mParsed.data!.link.targetTitle).toBe('启动会纪要');
+
+      const kb = await addLink(internalToken, issue2Id, { targetType: 'kb_document', targetId: kbPublishedId });
+      expect(kb.status).toBe(201);
+      const kParsed = IssueLinkResponseSchema.safeParse(kb.body);
+      expect(kParsed.data!.link.targetTitle).toBe('登录问题 FAQ');
+
+      const detail = await getIssue(regularUserToken, issue2Id);
+      const parsed = IssueGetResponseSchema.safeParse(detail.body);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data!.links.map((l) => l.targetType).sort()).toEqual(['blueprint', 'kb_document', 'minute']);
+      expect(parsed.data!.links.every((l) => l.targetTitle !== null)).toBe(true);
+      expect(parsed.data!.links[0].createdBy?.displayName).toBe('internal');
+    });
+
+    it('重复关联同一目标 → 400', async () => {
+      const dup = await addLink(internalToken, issue2Id, { targetType: 'blueprint', targetId: blueprintAId });
+      expect(dup.status).toBe(400);
+    });
+
+    it('跨项目关联（项目 B 的蓝图）→ 400；目标不存在 → 400', async () => {
+      const cross = await addLink(internalToken, issue2Id, { targetType: 'blueprint', targetId: blueprintBId });
+      expect(cross.status).toBe(400);
+      const missing = await addLink(internalToken, issue2Id, {
+        targetType: 'minute',
+        targetId: '00000000-0000-4000-8000-000000000000',
+      });
+      expect(missing.status).toBe(400);
+    });
+
+    it('非法 targetType / 非法 targetId → 400（契约层拦截）', async () => {
+      expect((await addLink(internalToken, issue2Id, { targetType: 'other', targetId: blueprintAId })).status).toBe(400);
+      expect((await addLink(internalToken, issue2Id, { targetType: 'blueprint', targetId: 'x' })).status).toBe(400);
+    });
+
+    it('权限：KeyUser/普通用户关联 403；PM 关联 201；未认证 401', async () => {
+      expect((await addLink(keyUserToken, issue2Id, { targetType: 'blueprint', targetId: blueprintAId })).status).toBe(403);
+      expect((await addLink(regularUserToken, issue2Id, { targetType: 'blueprint', targetId: blueprintAId })).status).toBe(403);
+      const pm = await addLink(pmToken, issue2Id, { targetType: 'minute', targetId: minuteAId });
+      expect(pm.status).toBe(400); // 已重复关联（beforeAll 用例 1 已建）——证明 PM 权限通过、被去重拦截
+      const noAuth = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${projectAId}/issues/${issue2Id}/links`,
+        payload: { targetType: 'blueprint', targetId: blueprintAId },
+      });
+      expect(noAuth.statusCode).toBe(401);
+    });
+
+    it('客户 PM 可关联已发布 kb；关联 kb 草稿 → 400（RLS 挡）', async () => {
+      const draft = await addLink(pmToken, issue2Id, { targetType: 'kb_document', targetId: kbDraftId });
+      expect(draft.status).toBe(400);
+      const pub = await addLink(pmToken, issue3Id, { targetType: 'kb_document', targetId: kbPublishedId });
+      expect(pub.status).toBe(201);
+      expect(IssueLinkResponseSchema.safeParse(pub.body).success).toBe(true);
+    });
+
+    it('DELETE 解除关联 204 → 详情 links 不含；不存在 link 404；KeyUser 删除 403', async () => {
+      const detail = await getIssue(internalToken, issue2Id);
+      const parsed = IssueGetResponseSchema.safeParse(detail.body);
+      const minuteLink = parsed.data!.links.find((l) => l.targetType === 'minute')!;
+      expect((await removeLink(keyUserToken, issue2Id, minuteLink.id)).status).toBe(403);
+      const removed = await removeLink(pmToken, issue2Id, minuteLink.id);
+      expect(removed.status).toBe(204);
+      const after = await getIssue(internalToken, issue2Id);
+      const afterParsed = IssueGetResponseSchema.safeParse(after.body);
+      expect(afterParsed.data!.links.find((l) => l.id === minuteLink.id)).toBeUndefined();
+      expect((await removeLink(pmToken, issue2Id, minuteLink.id)).status).toBe(404);
+    });
+  });
+
   describe('审计', () => {
     it('issue.create/update/transition/comment 落 audit_logs（含 actor 与资源）', async () => {
       const owner = connectOwner();
@@ -444,6 +654,14 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
         const comments = await owner`
           select action from audit_logs where action = 'issue.comment'`;
         expect(comments.length).toBeGreaterThanOrEqual(2);
+        const links = await owner`
+          select action, metadata from audit_logs where action = 'issue.link'`;
+        expect(links.length).toBeGreaterThanOrEqual(4); // 三种目标 + 客户 PM 关联 kb
+        const firstLink = JSON.parse(links[0].metadata as string) as { targetType: string };
+        expect(firstLink.targetType).toBe('blueprint');
+        const unlinks = await owner`
+          select action from audit_logs where action = 'issue.unlink'`;
+        expect(unlinks.length).toBeGreaterThanOrEqual(1);
       } finally {
         await owner.end();
       }

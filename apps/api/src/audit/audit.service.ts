@@ -20,6 +20,8 @@ export const AUDIT_ACTIONS = {
   ISSUE_UPDATE: 'issue.update',
   ISSUE_TRANSITION: 'issue.transition',
   ISSUE_COMMENT: 'issue.comment',
+  ISSUE_LINK: 'issue.link',
+  ISSUE_UNLINK: 'issue.unlink',
   BLUEPRINT_CREATE: 'blueprint.create',
   BLUEPRINT_UPDATE: 'blueprint.update',
   BLUEPRINT_PUBLISH: 'blueprint.publish',
