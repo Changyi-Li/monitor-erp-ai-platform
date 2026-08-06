@@ -113,7 +113,10 @@ export default function ProjectDetailPage() {
       {detail.project.description && (
         <p style={{ color: '#6b7280' }}>{detail.project.description}</p>
       )}
-      <p style={{ marginTop: 8 }}>
+      <p style={{ marginTop: 8, display: 'flex', gap: 16 }}>
+        <Link href={`/projects/${id}/blueprints`} style={{ color: '#2563eb' }}>
+          蓝图 →
+        </Link>
         <Link href={`/projects/${id}/issues`} style={{ color: '#2563eb' }}>
           问题清单 →
         </Link>

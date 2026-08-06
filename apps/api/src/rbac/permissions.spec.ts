@@ -45,6 +45,17 @@ describe('权限矩阵', () => {
     }
   });
 
+  it('#16：蓝图查看全员（§2.4 line 77），维护=仅内部（§2.4 line 81 蓝图维护）', () => {
+    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
+      expect(can(role as never, 'blueprint:view')).toBe(true);
+    }
+    expect(can('super_admin', 'blueprint:manage')).toBe(true);
+    expect(can('internal', 'blueprint:manage')).toBe(true);
+    expect(can('project_manager', 'blueprint:manage')).toBe(false);
+    expect(can('key_user', 'blueprint:manage')).toBe(false);
+    expect(can('regular_user', 'blueprint:manage')).toBe(false);
+  });
+
   it('#15：状态流转=内部专属（spec 37 内部处理问题；客户侧无流转）', () => {
     expect(can('super_admin', 'issue:transition')).toBe(true);
     expect(can('internal', 'issue:transition')).toBe(true);

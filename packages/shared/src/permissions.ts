@@ -18,6 +18,7 @@ export type FunctionalRole = (typeof FUNCTIONAL_ROLES)[number];
 /** 平台权限点（Phase 1，spec §2.4 十项 + 本期强制的基础设施权限） */
 export const PERMISSIONS = [
   'blueprint:view',
+  'blueprint:manage',
   'phase:view',
   'meeting:view',
   'issue:create',
@@ -39,11 +40,13 @@ export type Permission = (typeof PERMISSIONS)[number];
 
 /**
  * 权限矩阵（spec §2.4）：功能 → 允许的角色集合。
- * 本期已强制：project:create / member:manage / user:manage / customer:create；
- * 其余（blueprint/phase/meeting/issue/kb/manual/agent）定义先行，后续模块复用 can()。
+ * 本期已强制：project:create / member:manage / user:manage / customer:create /
+ * blueprint:view + blueprint:manage（#16 蓝图，维护仅内部）；
+ * 其余（phase/meeting/issue/kb/manual/agent）定义先行，后续模块复用 can()。
  */
 export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = {
   'blueprint:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
+  'blueprint:manage': ['super_admin', 'internal'], // spec §2.4 蓝图维护仅内部/超管
   'phase:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
   'meeting:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
   'issue:create': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],

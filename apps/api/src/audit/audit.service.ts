@@ -20,6 +20,9 @@ export const AUDIT_ACTIONS = {
   ISSUE_UPDATE: 'issue.update',
   ISSUE_TRANSITION: 'issue.transition',
   ISSUE_COMMENT: 'issue.comment',
+  BLUEPRINT_CREATE: 'blueprint.create',
+  BLUEPRINT_UPDATE: 'blueprint.update',
+  BLUEPRINT_PUBLISH: 'blueprint.publish',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

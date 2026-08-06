@@ -4,6 +4,7 @@ import {
   char,
   check,
   index,
+  integer,
   jsonb,
   pgPolicy,
   pgRole,
@@ -271,6 +272,99 @@ export const issueComments = pgTable(
 ).enableRLS();
 
 /**
+ * 蓝图（issue #16，spec §3.2）：一个项目一份（projectId unique），带版本控制。
+ * 当前内容可编辑（工作区）；发布时整体快照到 blueprint_versions（版本 = 文件 + 结构化内容一致快照）。
+ * draw.io 文件存对象存储（key 指向 StoragePort），DB 只存 key + 元信息。
+ * 数据边界 = 项目：tenantId 冗余供 RLS（同 projects/issues 模式）；应用层再校验项目成员 + 内部维护权限。
+ */
+export const blueprints = pgTable(
+  'blueprints',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // 结构化文档（spec §3.2：业务需求 / 模块功能范围 / 配置说明 / 流程描述）
+    businessRequirements: text('business_requirements'),
+    moduleScope: text('module_scope'),
+    configNotes: text('config_notes'),
+    processDescription: text('process_description'),
+    // draw.io 文件（对象存储 key + 元信息；创建即必传，PATCH 可保留原文件）
+    drawioKey: text('drawio_key').notNull(),
+    drawioName: text('drawio_name').notNull(),
+    drawioContentType: text('drawio_content_type').notNull(),
+    drawioSize: integer('drawio_size').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('blueprints_project_unique').on(t.projectId), // 一个项目一份蓝图
+    index('blueprints_tenant_idx').on(t.tenantId),
+    pgPolicy('blueprints_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('blueprints_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/** 蓝图版本快照（发布时冻结：字段 + 文件 key 一致快照，不可变；版本号每蓝图独立递增） */
+export const blueprintVersions = pgTable(
+  'blueprint_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    blueprintId: uuid('blueprint_id')
+      .notNull()
+      .references(() => blueprints.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(), // 1-based，每蓝图连续递增
+    businessRequirements: text('business_requirements'),
+    moduleScope: text('module_scope'),
+    configNotes: text('config_notes'),
+    processDescription: text('process_description'),
+    drawioKey: text('drawio_key').notNull(),
+    drawioName: text('drawio_name').notNull(),
+    drawioContentType: text('drawio_content_type').notNull(),
+    drawioSize: integer('drawio_size').notNull(),
+    publishedBy: uuid('published_by').references(() => users.id, { onDelete: 'set null' }), // 发布人
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('blueprint_versions_blueprint_version_unique').on(t.blueprintId, t.version),
+    index('blueprint_versions_blueprint_idx').on(t.blueprintId),
+    index('blueprint_versions_tenant_idx').on(t.tenantId),
+    pgPolicy('blueprint_versions_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('blueprint_versions_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
  * 审计日志（登录/关键数据访问/权限变更，spec §11 安全要求）。
  * 平台级表不加 RLS：受限角色经 ALTER DEFAULT PRIVILEGES 自动获得 CRUD。
  */
@@ -298,4 +392,6 @@ export type ProjectRow = typeof projects.$inferSelect;
 export type ProjectMemberRow = typeof projectMembers.$inferSelect;
 export type IssueRow = typeof issues.$inferSelect;
 export type IssueCommentRow = typeof issueComments.$inferSelect;
+export type BlueprintRow = typeof blueprints.$inferSelect;
+export type BlueprintVersionRow = typeof blueprintVersions.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;

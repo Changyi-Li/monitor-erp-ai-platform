@@ -12,6 +12,7 @@ import { AuditModule } from './audit/audit.module';
 import { CustomersModule } from './customers/customers.module';
 import { DrizzleModule } from './database/database.module';
 import { TenantInterceptor } from './database/tenant.interceptor';
+import { BlueprintsModule } from './blueprints/blueprints.module';
 import { IssuesModule } from './issues/issues.module';
 import { ProjectsModule } from './projects/projects.module';
 
@@ -31,6 +32,7 @@ import { ProjectsModule } from './projects/projects.module';
     CustomersModule,
     ProjectsModule,
     IssuesModule,
+    BlueprintsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
