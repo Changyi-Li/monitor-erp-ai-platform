@@ -39,9 +39,14 @@ export default function HomePage() {
           项目列表 →
         </Link>
         {user.role !== 'customer' && (
-          <Link href="/rag" style={{ color: '#2563eb' }}>
-            RAG 调试台 →
-          </Link>
+          <>
+            <Link href="/rag" style={{ color: '#2563eb' }}>
+              RAG 调试台 →
+            </Link>
+            <Link href="/agent" style={{ color: '#2563eb' }}>
+              AI 客服 →
+            </Link>
+          </>
         )}
       </p>
     </div>

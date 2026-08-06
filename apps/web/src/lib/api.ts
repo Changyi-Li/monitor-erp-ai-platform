@@ -85,8 +85,8 @@ export async function apiFetch<T>(
   return (parsed?.data ?? undefined) as T;
 }
 
-/** 轮换式刷新：成功返回 true 并写入新令牌 */
-async function tryRefresh(): Promise<boolean> {
+/** 轮换式刷新：成功返回 true 并写入新令牌（agent 流式请求复用） */
+export async function tryRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     return false;

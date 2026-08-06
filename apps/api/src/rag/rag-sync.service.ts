@@ -16,6 +16,7 @@ import { MemoryDocumentIndexAdapter } from '../adapters/indexing/memory-document
 import type { AuthUser } from '../common/current-user.decorator';
 import { DRIZZLE, RAW_DB, type Database } from '../database/database.module';
 import {
+  blueprints,
   blueprintVersions,
   documentSyncs,
   kbDocumentVersions,
@@ -201,6 +202,7 @@ export class RagSyncService {
         title: row.title,
         content,
         contentType: v.body != null ? 'text/markdown' : (v.contentType ?? undefined),
+        documentType: 'kb_document', // issue #22：引用跳转路由依据
         updatedAt: new Date(),
       };
     }
@@ -212,8 +214,11 @@ export class RagSyncService {
         configNotes: blueprintVersions.configNotes,
         processDescription: blueprintVersions.processDescription,
         drawioName: blueprintVersions.drawioName,
+        // issue #22：引用跳转 /projects/{projectId}/blueprints 需要项目 id
+        projectId: blueprints.projectId,
       })
       .from(blueprintVersions)
+      .innerJoin(blueprints, eq(blueprints.id, blueprintVersions.blueprintId))
       .where(
         and(
           eq(blueprintVersions.blueprintId, row.documentId),
@@ -241,6 +246,8 @@ export class RagSyncService {
       title: row.title,
       content,
       contentType: 'text/plain',
+      documentType: 'blueprint',
+      projectId: v.projectId,
       updatedAt: new Date(),
     };
   }

@@ -15,6 +15,8 @@ export const EnvSchema = z.object({
   STORAGE_DRIVER: z.enum(['memory']).default('memory'),
   MQ_DRIVER: z.enum(['memory']).default('memory'),
   INDEX_DRIVER: z.enum(['memory']).default('memory'),
+  // LLM 门面（切片 13/14 扩 openai-compatible 时只扩 enum + 加 case）
+  LLM_DRIVER: z.enum(['memory']).default('memory'),
 });
 export type Env = z.infer<typeof EnvSchema>;
 

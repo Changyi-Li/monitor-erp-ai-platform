@@ -9,6 +9,8 @@ import { validateEnv } from './config/env.schema';
 import { MqModule } from './adapters/mq/mq.module';
 import { StorageModule } from './adapters/storage/storage.module';
 import { IndexingModule } from './adapters/indexing/indexing.module';
+import { LlmModule } from './adapters/llm/llm.module';
+import { AgentModule } from './agent/agent.module';
 import { AuditModule } from './audit/audit.module';
 import { CustomersModule } from './customers/customers.module';
 import { DrizzleModule } from './database/database.module';
@@ -33,6 +35,7 @@ import { RagModule } from './rag/rag.module';
     StorageModule.forRoot(),
     MqModule.forRoot(),
     IndexingModule.forRoot(),
+    LlmModule.forRoot(),
     AuditModule,
     AuthModule,
     CustomersModule,
@@ -43,6 +46,7 @@ import { RagModule } from './rag/rag.module';
     MinutesModule,
     KbModule,
     RagModule,
+    AgentModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

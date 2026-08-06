@@ -10,6 +10,7 @@ import {
   pgPolicy,
   pgRole,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -742,6 +743,116 @@ export const auditLogs = pgTable(
   (t) => [index('audit_logs_created_at_idx').on(t.createdAt)],
 );
 
+/**
+ * 内部客服 AI Agent 会话（issue #22，spec §5）：多轮对话 + 回看/继续。
+ * 归属 = 用户本人：RLS 单策略 internal_bypass（客户连接 0 行 fail closed），
+ * 内部用户互相隔离靠应用层 WHERE userId（RLS 拦不住同角色间的水平越权）。
+ * thread_id（LangGraph checkpoint） = aiConversations.id。
+ */
+export const aiConversations = pgTable(
+  'ai_conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('新会话'), // 首问前 20 字快照（列表显示）
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('ai_conversations_user_idx').on(t.userId),
+    pgPolicy('ai_conversations_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * Agent 消息投影（会话回看/继续的查询友好层）：checkpointer 是 agent 运行时记忆
+ * 事实源（langgraph_checkpoints），aiMessages 是展示/审计投影——两者在同一请求
+ * 事务内双写，原子一致（分歧仅存于 interrupt/fork，本图无）。citations 仅 assistant 行。
+ */
+export const aiMessages = pgTable(
+  'ai_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => aiConversations.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    citations: jsonb('citations'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('ai_messages_conversation_idx').on(t.conversationId, t.createdAt),
+    check('ai_messages_role_check', sql`${t.role} in ('user','assistant')`),
+    pgPolicy('ai_messages_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * LangGraph.js checkpoint 持久化（issue #22）：BaseCheckpointSaver 数据库适配器表。
+ * checkpointId 是 LangGraph UUID（v6）→ text 列（uuid 类型会报格式错误）；
+ * checkpoint/metadata 为 JsonPlusSerializer 序列化后的 JSON 文本（UTF-8 字符串，
+ * loadsTyped 接受 string）。
+ */
+export const langgraphCheckpoints = pgTable(
+  'langgraph_checkpoints',
+  {
+    threadId: text('thread_id').notNull(), // = ai_conversations.id
+    checkpointId: text('checkpoint_id').notNull(),
+    parentCheckpointId: text('parent_checkpoint_id'),
+    checkpoint: jsonb('checkpoint').notNull(),
+    metadata: jsonb('metadata').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.threadId, t.checkpointId] }),
+    index('langgraph_checkpoints_parent_idx').on(t.threadId, t.parentCheckpointId),
+    pgPolicy('langgraph_checkpoints_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/** LangGraph pending writes（putWrites；无 interrupt 的线性图多为空，接口须实现） */
+export const langgraphCheckpointWrites = pgTable(
+  'langgraph_checkpoint_writes',
+  {
+    threadId: text('thread_id').notNull(),
+    checkpointId: text('checkpoint_id').notNull(),
+    taskId: text('task_id').notNull(),
+    idx: integer('idx').notNull(),
+    write: jsonb('write').notNull(), // [channel, value] 或 [taskId, channel, value]（含错误索引）
+  },
+  (t) => [
+    primaryKey({ columns: [t.threadId, t.checkpointId, t.taskId, t.idx] }),
+    pgPolicy('langgraph_checkpoint_writes_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
 export type UserRow = typeof users.$inferSelect;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
 export type CustomerRow = typeof customers.$inferSelect;
@@ -761,3 +872,7 @@ export type MinuteAttachmentRow = typeof minuteAttachments.$inferSelect;
 export type KbDocumentRow = typeof kbDocuments.$inferSelect;
 export type KbDocumentVersionRow = typeof kbDocumentVersions.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;
+export type AiConversationRow = typeof aiConversations.$inferSelect;
+export type AiMessageRow = typeof aiMessages.$inferSelect;
+export type LanggraphCheckpointRow = typeof langgraphCheckpoints.$inferSelect;
+export type LanggraphCheckpointWriteRow = typeof langgraphCheckpointWrites.$inferSelect;

@@ -42,6 +42,8 @@ export const AUDIT_ACTIONS = {
   KB_PUBLISH: 'kb.publish',
   KB_ARCHIVE: 'kb.archive',
   KB_RESTORE: 'kb.restore',
+  AGENT_CONVERSATION_CREATE: 'agent.conversation_create',
+  AGENT_CHAT: 'agent.chat',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
