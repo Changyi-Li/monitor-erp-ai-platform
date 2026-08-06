@@ -89,6 +89,15 @@ describe('权限矩阵', () => {
     expect(can('regular_user', 'kb:edit')).toBe(false);
   });
 
+  it('#21：RAG 同步状态/调试台=仅内部（spec 用户故事 50「内部用户查看文档的 RAG 同步状态」）', () => {
+    for (const role of ['super_admin', 'internal']) {
+      expect(can(role as never, 'rag:view')).toBe(true);
+    }
+    expect(can('project_manager', 'rag:view')).toBe(false);
+    expect(can('key_user', 'rag:view')).toBe(false);
+    expect(can('regular_user', 'rag:view')).toBe(false);
+  });
+
   it('#15：状态流转=内部专属（spec 37 内部处理问题；客户侧无流转）', () => {
     expect(can('super_admin', 'issue:transition')).toBe(true);
     expect(can('internal', 'issue:transition')).toBe(true);

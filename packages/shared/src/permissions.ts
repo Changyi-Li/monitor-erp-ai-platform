@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   'kb:edit',
   'manual:generate',
   'agent:use',
+  'rag:view', // #21 RAG 同步状态/调试台（spec 用户故事 50 内部用户查看）
   // 基础设施权限（本期 API 强制生效）
   'project:create',
   'member:manage',
@@ -64,6 +65,7 @@ export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = 
   'kb:edit': ['super_admin', 'internal'],
   'manual:generate': ['super_admin', 'internal'],
   'agent:use': ['super_admin', 'internal'],
+  'rag:view': ['super_admin', 'internal'], // #21 RAG 同步状态/调试台仅内部（spec 用户故事 50）
   'project:create': ['super_admin', 'internal'],
   'member:manage': ['super_admin', 'internal', 'project_manager'],
   'user:manage': ['super_admin', 'internal'],

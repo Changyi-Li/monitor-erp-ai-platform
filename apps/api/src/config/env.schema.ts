@@ -14,6 +14,7 @@ export const EnvSchema = z.object({
   // 适配层驱动：切换实现只改配置，业务代码零改动
   STORAGE_DRIVER: z.enum(['memory']).default('memory'),
   MQ_DRIVER: z.enum(['memory']).default('memory'),
+  INDEX_DRIVER: z.enum(['memory']).default('memory'),
 });
 export type Env = z.infer<typeof EnvSchema>;
 

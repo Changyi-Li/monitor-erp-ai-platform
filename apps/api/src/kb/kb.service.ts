@@ -31,6 +31,7 @@ import {
   type KbDocumentVersionRow,
 } from '../database/schema';
 import { TenantContextService } from '../database/tenant-context.service';
+import { RagSyncService } from '../rag/rag-sync.service';
 
 /** base64 解码上限：KbCreateRequestSchema.base64 ≤ 8_000_000 字符 ≈ 6MB 二进制（同 drawio/minutes） */
 const MAX_FILE_BYTES = 6_000_000;
@@ -61,6 +62,7 @@ export class KbService {
     @Inject(STORAGE) private readonly storage: StoragePort,
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
+    private readonly rag: RagSyncService,
   ) {}
 
   /** 全局域 viewerRole：内部 → 'internal'；客户用户（须 isActive，查 users 表）→ 'customer' */
@@ -529,6 +531,18 @@ export class KbService {
       resourceId: row.id,
       metadata: { title: updated.title, toVersion: versionNumber },
     });
+    // 发布 = RAG 同步触发点（#21）：事务入队（请求事务内，失败 → 发布回滚）+ 提交后唤醒
+    const sync = await this.rag.enqueueInTx(this.db, {
+      documentId: row.id,
+      documentType: 'kb_document',
+      versionNumber,
+      action: 'upsert',
+      scope: 'internal', // 内部 KB 文档 → 内部 Index（spec 57）
+      title: updated.title,
+    });
+    if (sync) {
+      await this.rag.notify(sync.id);
+    }
     return { document: await this.documentDetail(row.id, viewerRole) };
   }
 
@@ -555,6 +569,21 @@ export class KbService {
       resourceId: row.id,
       metadata: { title: row.title },
     });
+    // 归档 = RAG 删除触发点（#21）：事务入队 delete（最后发布版本 → 从 Index 下架）
+    const last = await this.latestPublishedVersion(row.id);
+    if (last && last.versionNumber !== null) {
+      const sync = await this.rag.enqueueInTx(this.db, {
+        documentId: row.id,
+        documentType: 'kb_document',
+        versionNumber: last.versionNumber,
+        action: 'delete',
+        scope: 'internal',
+        title: row.title,
+      });
+      if (sync) {
+        await this.rag.notify(sync.id);
+      }
+    }
     return { document: await this.documentDetail(row.id, viewerRole) };
   }
 
@@ -581,6 +610,21 @@ export class KbService {
       resourceId: row.id,
       metadata: { title: row.title },
     });
+    // 恢复 = 重新上架（#21）：事务入队 upsert 最后发布版本 → 重新导入 Index
+    const last = await this.latestPublishedVersion(row.id);
+    if (last && last.versionNumber !== null) {
+      const sync = await this.rag.enqueueInTx(this.db, {
+        documentId: row.id,
+        documentType: 'kb_document',
+        versionNumber: last.versionNumber,
+        action: 'upsert',
+        scope: 'internal',
+        title: row.title,
+      });
+      if (sync) {
+        await this.rag.notify(sync.id);
+      }
+    }
     return { document: await this.documentDetail(row.id, viewerRole) };
   }
 

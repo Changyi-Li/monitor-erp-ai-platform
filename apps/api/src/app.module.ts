@@ -8,6 +8,7 @@ import { ZodResponseInterceptor } from './common/zod-response.interceptor';
 import { validateEnv } from './config/env.schema';
 import { MqModule } from './adapters/mq/mq.module';
 import { StorageModule } from './adapters/storage/storage.module';
+import { IndexingModule } from './adapters/indexing/indexing.module';
 import { AuditModule } from './audit/audit.module';
 import { CustomersModule } from './customers/customers.module';
 import { DrizzleModule } from './database/database.module';
@@ -18,6 +19,7 @@ import { KbModule } from './kb/kb.module';
 import { MinutesModule } from './minutes/minutes.module';
 import { ProjectsModule } from './projects/projects.module';
 import { StagesModule } from './stages/stages.module';
+import { RagModule } from './rag/rag.module';
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { StagesModule } from './stages/stages.module';
     DrizzleModule.forRoot(),
     StorageModule.forRoot(),
     MqModule.forRoot(),
+    IndexingModule.forRoot(),
     AuditModule,
     AuthModule,
     CustomersModule,
@@ -39,6 +42,7 @@ import { StagesModule } from './stages/stages.module';
     StagesModule,
     MinutesModule,
     KbModule,
+    RagModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

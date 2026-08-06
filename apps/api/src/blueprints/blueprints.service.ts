@@ -36,6 +36,7 @@ import {
 } from '../database/schema';
 import { TenantContextService, type TenantContext } from '../database/tenant-context.service';
 import { MembersService } from '../projects/members.service';
+import { RagSyncService } from '../rag/rag-sync.service';
 
 /** base64 解码上限：DrawioUploadSchema.base64 ≤ 8_000_000 字符 ≈ 6MB 二进制 */
 const MAX_DRAWIO_BYTES = 6_000_000;
@@ -61,6 +62,7 @@ export class BlueprintsService {
     private readonly tenantContext: TenantContextService,
     private readonly members: MembersService,
     private readonly audit: AuditService,
+    private readonly rag: RagSyncService,
   ) {}
 
   /** 项目准入：内部 → 'internal'；客户用户须为该项目 active 成员（非成员 → 403） */
@@ -230,10 +232,33 @@ export class BlueprintsService {
       resourceId: row.id,
       metadata: { projectId, version: 1 },
     });
+    // 创建即发布 v1 → RAG 同步入队（#21：客户项目文档 → 客户 Index）
+    await this.enqueueBlueprintSync(row.id, row.tenantId, 1, row.drawioName);
     return {
       blueprint: toBlueprintDto(row, 1),
       version: toVersionDto(version, await this.publisherName(actor.sub)),
     };
+  }
+
+  /** RAG 同步入队（#21，spec 57 scope 路由）：蓝图发布/创建 → 客户 Index（事务入队 + 提交后唤醒） */
+  private async enqueueBlueprintSync(
+    blueprintId: string,
+    tenantId: string,
+    versionNumber: number,
+    drawioName: string,
+  ): Promise<void> {
+    const sync = await this.rag.enqueueInTx(this.db, {
+      documentId: blueprintId,
+      documentType: 'blueprint',
+      versionNumber,
+      action: 'upsert',
+      scope: 'customer',
+      tenantId,
+      title: drawioName,
+    });
+    if (sync) {
+      await this.rag.notify(sync.id);
+    }
   }
 
   /** 编辑当前内容（部分更新；drawio 可选——不带则保留现有文件） */
@@ -349,6 +374,8 @@ export class BlueprintsService {
       resourceId: row.id,
       metadata: { projectId, fromVersion: from, toVersion: next },
     });
+    // 蓝图发布 = RAG 同步触发点（#21）：客户项目文档 → 客户 Index（spec 57 scope 路由）
+    await this.enqueueBlueprintSync(row.id, row.tenantId, next, row.drawioName);
     return {
       blueprint: toBlueprintDto(row, next),
       version: toVersionDto(version, await this.publisherName(actor.sub)),

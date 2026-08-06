@@ -29,6 +29,14 @@ export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 export const ISSUE_LINK_TARGETS = ['blueprint', 'minute', 'kb_document'] as const;
 export type IssueLinkTargetType = (typeof ISSUE_LINK_TARGETS)[number];
 
+/** RAG 同步任务状态（document_syncs.status，#21 发布即同步管线） */
+export const RAG_SYNC_STATUSES = ['queued', 'processing', 'succeeded', 'failed'] as const;
+export type RagSyncStatus = (typeof RAG_SYNC_STATUSES)[number];
+
+/** RAG 同步 scope（spec 57：内部文档→内部 Index，项目文档→客户 Index） */
+export const RAG_SCOPES = ['internal', 'customer'] as const;
+export type RagScope = (typeof RAG_SCOPES)[number];
+
 /** 实施阶段状态（spec §3.3：未开始/进行中/已完成/已暂停；应用层自由流转） */
 export const STAGE_STATUSES = ['not_started', 'in_progress', 'completed', 'paused'] as const;
 export type StageStatus = (typeof STAGE_STATUSES)[number];

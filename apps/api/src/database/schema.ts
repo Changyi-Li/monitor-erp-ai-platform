@@ -318,6 +318,56 @@ export const issueLinks = pgTable(
 ).enableRLS();
 
 /**
+ * 文档 → RAG 同步任务（issue #21，spec §4.3「发布即同步」）：持久化队列。
+ * 发布/归档/恢复与任务行同事务落库（「入队失败则发布回滚」），MQ 事件仅作
+ * 事务提交后的唤醒信号（可丢失，worker 启动/定时扫 due 兜底）。
+ * 幂等：unique(documentId, documentType, versionNumber, action)；
+ * scope 路由：kb 文档（全局）→ internal，蓝图（客户项目文档）→ customer（tenantId 冗余供 RLS）。
+ * title 为入队时快照（调试台直接显示，避免多态 join）。
+ */
+export const documentSyncs = pgTable(
+  'document_syncs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id').notNull(), // 无 FK（多态：kb_documents / blueprints）
+    documentType: text('document_type').notNull(),
+    versionNumber: integer('version_number').notNull(),
+    action: text('action').notNull(),
+    scope: text('scope').notNull(),
+    tenantId: uuid('tenant_id').references(() => customers.id, { onDelete: 'set null' }), // customer scope → 客户 id
+    title: text('title').notNull(),
+    status: text('status').notNull().default('queued'),
+    attempt: integer('attempt').notNull().default(0),
+    nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('document_syncs_key_unique').on(t.documentId, t.documentType, t.versionNumber, t.action),
+    index('document_syncs_status_idx').on(t.status, t.nextRetryAt),
+    check('document_syncs_type_check', sql`${t.documentType} in ('kb_document','blueprint')`),
+    check('document_syncs_action_check', sql`${t.action} in ('upsert','delete')`),
+    check('document_syncs_scope_check', sql`${t.scope} in ('internal','customer')`),
+    check('document_syncs_status_check', sql`${t.status} in ('queued','processing','succeeded','failed')`),
+    pgPolicy('document_syncs_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('document_syncs_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
  * 蓝图（issue #16，spec §3.2）：一个项目一份（projectId unique），带版本控制。
  * 当前内容可编辑（工作区）；发布时整体快照到 blueprint_versions（版本 = 文件 + 结构化内容一致快照）。
  * draw.io 文件存对象存储（key 指向 StoragePort），DB 只存 key + 元信息。
@@ -701,6 +751,7 @@ export type ProjectMemberRow = typeof projectMembers.$inferSelect;
 export type IssueRow = typeof issues.$inferSelect;
 export type IssueCommentRow = typeof issueComments.$inferSelect;
 export type IssueLinkRow = typeof issueLinks.$inferSelect;
+export type DocumentSyncRow = typeof documentSyncs.$inferSelect;
 export type BlueprintRow = typeof blueprints.$inferSelect;
 export type BlueprintVersionRow = typeof blueprintVersions.$inferSelect;
 export type ProjectStageRow = typeof projectStages.$inferSelect;
