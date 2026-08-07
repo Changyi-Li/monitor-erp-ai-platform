@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, max, ne, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, max, ne, sql, type SQL } from 'drizzle-orm';
 import {
   type KbCreateRequest,
   type KbDocumentDetail,
@@ -26,6 +26,7 @@ import { DRIZZLE, type Database } from '../database/database.module';
 import {
   kbDocumentVersions,
   kbDocuments,
+  projects,
   users,
   type KbDocumentRow,
   type KbDocumentVersionRow,
@@ -234,6 +235,11 @@ export class KbService {
     }
     if (viewerRole === 'customer') {
       conditions.push(eq(kbDocuments.status, 'published'));
+      // 租户可见性（issue #26）：全局文档（tenant_id NULL）+ 本租户项目文档
+      // （RLS 兜底 + 服务层显式过滤；tenantId 为 null 时 '' 恒不匹配 → fail closed）
+      conditions.push(
+        sql`(${kbDocuments.tenantId} is null or ${kbDocuments.tenantId} = ${ctx.tenantId ?? ''})`,
+      );
     } else if (!query.includeArchived) {
       conditions.push(ne(kbDocuments.status, 'archived'));
     }
@@ -260,6 +266,22 @@ export class KbService {
     const viewerRole = await this.resolveViewerRole(actor, ctx);
     this.assertCanManage(viewerRole, '仅内部用户可维护知识库文档');
 
+    // 项目文档归属（issue #26）：校验项目存在（RLS 过滤 → 404 防探测）并挂租户
+    let projectId: string | undefined;
+    let tenantId: string | undefined;
+    if (input.docType === 'markdown' && input.projectId) {
+      const [project] = await this.db
+        .select({ id: projects.id, tenantId: projects.tenantId })
+        .from(projects)
+        .where(eq(projects.id, input.projectId))
+        .limit(1);
+      if (!project) {
+        throw new NotFoundException('项目不存在');
+      }
+      projectId = project.id;
+      tenantId = project.tenantId;
+    }
+
     let fileMeta: { buffer: Buffer; fileName: string; contentType: string } | undefined;
     if (input.docType === 'file') {
       const buffer = Buffer.from(input.base64, 'base64');
@@ -279,6 +301,7 @@ export class KbService {
         category: input.category,
         docType: input.docType,
         status: 'draft',
+        ...(projectId && tenantId ? { projectId, tenantId } : {}), // 项目文档 → 租户挂靠；全局文档不加
         createdById: actor.sub,
       })
       .returning();
@@ -536,12 +559,14 @@ export class KbService {
       metadata: { title: updated.title, toVersion: versionNumber },
     });
     // 发布 = RAG 同步触发点（#21）：事务入队（请求事务内，失败 → 发布回滚）+ 提交后唤醒
+    // scope 路由（issue #26）：项目文档 → 客户 Index（tenantId）；全局文档 → 内部 Index
     const sync = await this.rag.enqueueInTx(this.db, {
       documentId: row.id,
       documentType: 'kb_document',
       versionNumber,
       action: 'upsert',
-      scope: 'internal', // 内部 KB 文档 → 内部 Index（spec 57）
+      scope: row.projectId ? 'customer' : 'internal',
+      ...(row.projectId ? { tenantId: row.tenantId } : {}),
       title: updated.title,
     });
     if (sync) {
@@ -581,7 +606,8 @@ export class KbService {
         documentType: 'kb_document',
         versionNumber: last.versionNumber,
         action: 'delete',
-        scope: 'internal',
+        scope: row.projectId ? 'customer' : 'internal',
+        ...(row.projectId ? { tenantId: row.tenantId } : {}),
         title: row.title,
       });
       if (sync) {
@@ -622,7 +648,8 @@ export class KbService {
         documentType: 'kb_document',
         versionNumber: last.versionNumber,
         action: 'upsert',
-        scope: 'internal',
+        scope: row.projectId ? 'customer' : 'internal',
+        ...(row.projectId ? { tenantId: row.tenantId } : {}),
         title: row.title,
       });
       if (sync) {
@@ -736,6 +763,7 @@ function toDocumentDto(
 ): KbDocumentDetailWithoutRole {
   return {
     id: row.id,
+    projectId: row.projectId,
     title: row.title,
     category: row.category as KbDocumentDetail['category'],
     docType: row.docType as KbDocumentDetail['docType'],

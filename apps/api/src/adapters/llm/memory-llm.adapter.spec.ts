@@ -98,6 +98,76 @@ describe('memory LLM fake：确定性回答', () => {
   });
 });
 
+describe('memory LLM fake：操作手册生成（issue #26）', () => {
+  const llm = new MemoryLlmAdapter();
+
+  const manualSystem = [
+    '[操作手册生成]',
+    '你正在为客户的实施项目生成操作手册。请基于蓝图的流程描述规划章节大纲。',
+    '[蓝图流程]',
+    '## 订单处理',
+    '1. 接收订单',
+    '2. 审核&确认',
+    '## 步骤连线',
+    '接收订单 → 审核&确认（库存不足）',
+    '[项目上下文]',
+    '项目：p-1｜客户：客户A｜蓝图版本：v1',
+  ].join('\n');
+
+  it('含「章节大纲」→ 确定性 JSON（5 章 + outline 内嵌流程行）', async () => {
+    const { content, usage } = await llm.chat({
+      messages: [
+        { role: 'system', content: manualSystem },
+        { role: 'user', content: '请生成章节大纲（JSON：{chapters:[{seq,title,outline}]}）。' },
+      ],
+    });
+    const parsed = JSON.parse(content) as { chapters: { seq: number; title: string; outline: string }[] };
+    expect(parsed.chapters).toHaveLength(5);
+    expect(parsed.chapters[0]!.seq).toBe(1);
+    expect(parsed.chapters[0]!.title).toBe('系统概述与登录');
+    // outline 内嵌 [蓝图流程] 前三行（manual.service 透传）
+    expect(parsed.chapters[0]!.outline).toContain('订单处理');
+    expect(usage.outputTokens).toBe(Math.ceil(content.length / 4));
+  });
+
+  it('「第 N 章「标题」」正文调用（容忍 `第 1 章「」` 空格）→ 步骤回显流程行', async () => {
+    const { content } = await llm.chat({
+      messages: [
+        { role: 'system', content: manualSystem },
+        { role: 'user', content: '请生成第 1 章「系统概述与登录」的正文，章节大纲：适用范围。' },
+      ],
+    });
+    expect(content).toContain('## 系统概述与登录');
+    expect(content).toContain('### 操作步骤');
+    // 流程行回显（manual.service 的 `第 ${seq} 章` 带空格 → 正则须容忍）
+    expect(content).toContain('1. 1. 接收订单');
+    expect(content).toContain('memory 驱动模拟生成');
+  });
+
+  it('分支顺序回归：无 [操作手册生成] 锚点 → 走检索规则', async () => {
+    const { content } = await llm.chat({
+      messages: [
+        { role: 'system', content: systemWithDocs },
+        { role: 'user', content: '请生成第 1 章「系统概述与登录」的正文' },
+      ],
+    });
+    expect(content).toContain('根据知识库「登录问题 FAQ」');
+    expect(content).not.toContain('操作手册');
+  });
+
+  it('分支顺序回归：锚点 + 检索文档同屏 → manual 分支优先（manual prompt 无 [检索文档] 区块）', async () => {
+    const mixed = `${systemWithDocs}\n[操作手册生成]\n[蓝图流程]\n1. 步骤甲`;
+    const { content } = await llm.chat({
+      messages: [
+        { role: 'system', content: mixed },
+        { role: 'user', content: '请生成章节大纲（JSON：{chapters:[{seq,title,outline}]}）。' },
+      ],
+    });
+    expect(content).toContain('系统概述与登录');
+    expect(content).not.toContain('未找到相关信息');
+  });
+});
+
 describe('memory LLM fake：多模态（issue #24）', () => {
   const llm = new MemoryLlmAdapter();
 

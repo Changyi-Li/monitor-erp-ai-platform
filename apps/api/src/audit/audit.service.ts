@@ -51,6 +51,11 @@ export const AUDIT_ACTIONS = {
   IMPORT_APPLY: 'import.apply',
   IMPORT_DELETE: 'import.delete',
   IMPORT_FETCH: 'import.fetch',
+  MANUAL_CREATE: 'manual.create',
+  MANUAL_CHAPTER_GENERATE: 'manual.chapter_generate',
+  MANUAL_CHAPTER_UPDATE: 'manual.chapter_update',
+  MANUAL_ASSEMBLE: 'manual.assemble',
+  MANUAL_PUBLISH: 'manual.publish',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

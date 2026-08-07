@@ -8,8 +8,10 @@ import {
   KbDocumentResponseSchema,
   KbListResponseSchema,
   KbVersionsResponseSchema,
+  RagSyncsResponseSchema,
   type KbDocumentDetail,
   type KbVersion,
+  type RagSync,
 } from '@monitor/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
@@ -512,5 +514,33 @@ describe('KB e2e：内部知识库', () => {
     } finally {
       await owner.end();
     }
+  });
+
+  it('回归（issue #26）：全局文档发布 → sync scope 仍 internal（tenant_id NULL 分支不变）', async () => {
+    // markdownDocId 已在验收①-2 发布；等 worker 消费后断言 scope 路由不受项目挂靠影响
+    const deadline = Date.now() + 10_000;
+    let syncs: RagSync[] = [];
+    while (Date.now() < deadline) {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/rag/syncs',
+        headers: { authorization: `Bearer ${internalToken}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const parsed = RagSyncsResponseSchema.safeParse(res.json());
+      expect(parsed.success).toBe(true);
+      syncs = parsed.data!.syncs;
+      const hit = syncs.find(
+        (x) => x.documentId === markdownDocId && x.action === 'upsert' && x.status === 'succeeded',
+      );
+      if (hit) {
+        expect(hit.documentType).toBe('kb_document');
+        expect(hit.scope).toBe('internal'); // 无 projectId → internal，不进入客户 Index
+        expect(hit.tenantId).toBeNull();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    throw new Error('等待全局文档同步超时');
   });
 });

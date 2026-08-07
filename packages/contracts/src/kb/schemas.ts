@@ -31,6 +31,7 @@ export type KbFile = z.output<typeof KbFileSchema>;
 /** 知识库文档（列表/详情统一形状；hasDraft = 已发布 + 有待发布草稿修改；source = 内部创作/外部导入只读） */
 export const KbDocumentSchema = z.object({
   id: z.uuid(),
+  projectId: z.uuid().nullable(), // 归属：null = 全局文档（内部知识库）；非 null = 项目文档（客户知识库，issue #26）
   title: z.string().trim().min(1).max(255),
   category: z.enum(KB_CATEGORIES),
   docType: z.enum(KB_DOC_TYPES),
@@ -54,6 +55,7 @@ export type KbDocumentDetail = z.output<typeof KbDocumentDetailSchema>;
 /** 创建文档（草稿）：markdown 或文件（JSON + base64，同 drawio/minutes——不引入 multipart） */
 const KbMarkdownCreateSchema = z.object({
   docType: z.literal('markdown'),
+  projectId: z.uuid().optional(), // 项目文档归属（issue #26 手册产物；传此值时 service 校验项目存在并挂租户）
   title: z.string().trim().min(1, { error: '标题不能为空' }).max(255),
   category: z.enum(KB_CATEGORIES, { error: '分类必须是 manual/faq/best_practice' }),
   body: z.string().max(200_000).optional(), // Markdown 正文（可先建框架后补内容）

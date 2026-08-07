@@ -649,6 +649,10 @@ export const kbDocuments = pgTable(
   'kb_documents',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // 归属：NULL = 全局文档（内部知识库，issue #19 语义不变）；非 NULL = 项目文档
+    // （客户知识库，issue #26 手册产物；tenantId 冗余供 RLS 租户过滤）
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    tenantId: uuid('tenant_id').references(() => customers.id, { onDelete: 'set null' }),
     title: text('title').notNull(),
     // 'manual' | 'faq' | 'best_practice'（操作手册/FAQ/最佳实践）
     category: text('category').notNull(),
@@ -668,6 +672,8 @@ export const kbDocuments = pgTable(
   },
   (t) => [
     index('kb_documents_category_status_idx').on(t.category, t.status),
+    index('kb_documents_tenant_idx').on(t.tenantId),
+    index('kb_documents_project_idx').on(t.projectId),
     uniqueIndex('kb_documents_external_key_unique')
       .on(t.source, t.externalKey)
       .where(sql`${t.source} = 'online_help' and ${t.externalKey} is not null`),
@@ -679,11 +685,13 @@ export const kbDocuments = pgTable(
       using: sql`current_setting('app.is_internal', true) = 'true'`,
       withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
     }),
+    // 已发布可读（issue #26 演进）：NULL=全局文档全员可见（原语义）；项目文档仅所属租户可见。
+    // 注意：permissive 策略 OR 语义——此策略 DROP 重建必须与 DB 一致，旧策略留存会向全客户泄漏项目文档
     pgPolicy('kb_documents_read_published', {
       as: 'permissive',
       for: 'select',
       to: appTenantUser,
-      using: sql`${t.status} = 'published'`,
+      using: sql`${t.status} = 'published' and (${t.tenantId} is null or ${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`,
     }),
   ],
 ).enableRLS();
@@ -782,6 +790,107 @@ export const importStagedDocuments = pgTable(
       sql`${t.status} in ('pending','processing','processed','failed')`,
     ),
     pgPolicy('import_staged_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * 操作手册生成会话（issue #26，spec §6）：「选蓝图版本 → 分章节生成 → 逐章审校 →
+ * 组装 → 落项目知识库」的完整流程。数据边界 = 项目（tenantId 冗余 RLS，同 issues
+ * 模式）；维护 = manual:generate（仅内部/超管，spec §2.4 手册维护仅内部）；查看 = 项目成员。
+ * status：in_progress（生成/审校中）→ published（已落 kb 草稿）；蓝图新版本发布不覆盖
+ * 本会话（AC4 stale 读时计算），再生成 = 新会话新草稿。
+ */
+export const manualGenerations = pgTable(
+  'manual_generations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    blueprintId: uuid('blueprint_id')
+      .notNull()
+      .references(() => blueprints.id, { onDelete: 'cascade' }),
+    blueprintVersion: integer('blueprint_version').notNull(), // 生成时的蓝图版本（AC4 stale 依据）
+    title: text('title').notNull(),
+    // 'in_progress' | 'published'（已落 kb 草稿）
+    status: text('status').notNull().default('in_progress'),
+    kbDocumentId: uuid('kb_document_id').references(() => kbDocuments.id, {
+      onDelete: 'set null',
+    }), // 组装发布的 kb 文档（草稿态）
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('manual_generations_tenant_idx').on(t.tenantId),
+    index('manual_generations_project_idx').on(t.projectId),
+    index('manual_generations_blueprint_idx').on(t.blueprintId),
+    check('manual_generations_status_check', sql`${t.status} in ('in_progress','published')`),
+    pgPolicy('manual_generations_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('manual_generations_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * 手册章节（issue #26）：生成会话的分章节产物。seq = 1-based 固定顺序（不可重排）；
+ * outline 由 LLM 大纲调用产出（生成正文时注入）；status：pending（大纲已定未生成正文）
+ * → ready（AI 生成）→ edited（人工审校；重新生成覆盖 content_md 回到 ready）。
+ */
+export const manualChapters = pgTable(
+  'manual_chapters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    generationId: uuid('generation_id')
+      .notNull()
+      .references(() => manualGenerations.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(), // 1-based 章节顺序
+    title: text('title').notNull(),
+    outline: text('outline'), // 章节大纲（AI 规划；生成正文时注入）
+    contentMd: text('content_md'), // 正文（Markdown；生成/审校后更新）
+    // 'pending' | 'ready' | 'edited'
+    status: text('status').notNull().default('pending'),
+    aiGeneratedAt: timestamp('ai_generated_at', { withTimezone: true }),
+    editedAt: timestamp('edited_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('manual_chapters_generation_seq_unique').on(t.generationId, t.seq),
+    index('manual_chapters_generation_idx').on(t.generationId),
+    index('manual_chapters_tenant_idx').on(t.tenantId),
+    check('manual_chapters_status_check', sql`${t.status} in ('pending','ready','edited')`),
+    pgPolicy('manual_chapters_tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`${t.tenantId} = NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    pgPolicy('manual_chapters_internal_bypass', {
       as: 'permissive',
       for: 'all',
       to: appTenantUser,
@@ -991,6 +1100,8 @@ export type MinuteAttachmentRow = typeof minuteAttachments.$inferSelect;
 export type KbDocumentRow = typeof kbDocuments.$inferSelect;
 export type KbDocumentVersionRow = typeof kbDocumentVersions.$inferSelect;
 export type ImportStagedRow = typeof importStagedDocuments.$inferSelect;
+export type ManualGenerationRow = typeof manualGenerations.$inferSelect;
+export type ManualChapterRow = typeof manualChapters.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;
 export type AiConversationRow = typeof aiConversations.$inferSelect;
 export type AiMessageRow = typeof aiMessages.$inferSelect;

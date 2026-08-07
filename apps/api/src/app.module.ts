@@ -25,6 +25,7 @@ import { RagModule } from './rag/rag.module';
 import { UsageModule } from './usage/usage.module';
 import { AiModule } from './ai/ai.module';
 import { ImportsModule } from './imports/imports.module';
+import { ManualModule } from './manual/manual.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ImportsModule } from './imports/imports.module';
     UsageModule,
     AiModule,
     ImportsModule,
+    ManualModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
