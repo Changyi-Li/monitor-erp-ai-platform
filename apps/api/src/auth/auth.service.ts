@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import {
+  type CreateUserRequest,
+  type CreateUserResponse,
   type LoginRequest,
   type LoginResponse,
   type MeResponse,
@@ -19,6 +21,7 @@ import {
   type User,
   type UsersListResponse,
 } from '@monitor/contracts';
+import type { AuthUser } from '../common/current-user.decorator';
 import type { UserRole } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
 import { DRIZZLE, type Database } from '../database/database.module';
@@ -221,6 +224,42 @@ export class AuthService {
       throw new UnauthorizedException('用户不存在');
     }
     return { user: toUserDto(user) };
+  }
+
+  /**
+   * 超管创建内部用户（US-3，@Roles(super_admin) 守卫）：仿 register 查重/hash/insert，
+   * 但显式写 role（super_admin/internal），并落审计 user.create。
+   */
+  async createUser(input: CreateUserRequest, actor: AuthUser): Promise<CreateUserResponse> {
+    const email = input.email.toLowerCase();
+    const displayName = input.displayName?.trim() ?? email.split('@')[0] ?? 'User';
+
+    const existing = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    if (existing.length > 0) {
+      throw new ConflictException('该邮箱已注册');
+    }
+
+    const passwordHash = await this.password.hash(input.password);
+    const [user] = await this.db
+      .insert(users)
+      .values({ email, passwordHash, displayName, role: input.role })
+      .returning();
+    if (!user) {
+      throw new InternalServerErrorException('创建用户失败');
+    }
+
+    await this.audit.record(AUDIT_ACTIONS.USER_CREATE, {
+      actorUserId: actor.sub,
+      actorRole: actor.role,
+      resourceType: 'user',
+      resourceId: user.id,
+      metadata: { email, role: input.role },
+    });
+    return { user: { ...toUserDto(user), isActive: true } };
   }
 
   /** 用户管理列表（@Roles(super_admin, internal) 守卫，全量平台账号） */

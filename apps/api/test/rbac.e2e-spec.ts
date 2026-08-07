@@ -4,6 +4,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import {
+  CreateUserResponseSchema,
   CustomerCreateResponseSchema,
   MemberInviteResponseSchema,
   MembersListResponseSchema,
@@ -500,6 +501,84 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         headers: { authorization: `Bearer ${pmToken}` },
       });
       expect(denied.statusCode).toBe(403);
+    });
+
+    // US-3：超管创建内部用户（方法级 @Roles('super_admin') 覆盖类级 super_admin+internal）
+    it('POST /api/users：超管 201 且新账号可登录；内部/客户 403；重复邮箱 409；非法角色 400', async () => {
+      const createdEmail = 'created@corp.test';
+      const ok = await app.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: {
+          email: createdEmail,
+          password: 'NewPass123',
+          displayName: '新建用户',
+          role: 'internal',
+        },
+      });
+      expect(ok.statusCode).toBe(201);
+      expect(CreateUserResponseSchema.safeParse(ok.json()).success).toBe(true);
+
+      // 新账号能登录（验证密码哈希与 role 生效）
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: createdEmail, password: 'NewPass123' },
+      });
+      expect(login.statusCode).toBe(200);
+
+      // internal 建号 → 403（类级守卫被方法级覆盖）
+      const deniedInternal = await app.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${internalToken}` },
+        payload: { email: 'denied@corp.test', password: 'NewPass123', role: 'internal' },
+      });
+      expect(deniedInternal.statusCode).toBe(403);
+
+      // 客户建号 → 403
+      const deniedCustomer = await app.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { email: 'denied2@corp.test', password: 'NewPass123', role: 'internal' },
+      });
+      expect(deniedCustomer.statusCode).toBe(403);
+
+      // 重复邮箱 → 409
+      const dup = await app.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { email: createdEmail, password: 'NewPass123', role: 'super_admin' },
+      });
+      expect(dup.statusCode).toBe(409);
+
+      // 角色只能是 super_admin/internal（customer 被契约拒绝）→ 400
+      const badRole = await app.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { email: 'badrole@corp.test', password: 'NewPass123', role: 'customer' },
+      });
+      expect(badRole.statusCode).toBe(400);
+    });
+
+    it('创建内部用户落审计 user.create（actor=超管）', async () => {
+      const owner = connectOwner();
+      try {
+        const rows = await owner`
+          select action, actor_user_id, actor_role, resource_type, resource_id
+          from audit_logs where action = 'user.create' order by created_at desc limit 1`;
+        expect(rows.length).toBe(1);
+        expect(rows[0].actor_user_id).toBeTruthy();
+        expect(rows[0].actor_role).toBe('super_admin');
+        expect(rows[0].resource_type).toBe('user');
+        expect(rows[0].resource_id).toBeTruthy();
+      } finally {
+        await owner.end();
+      }
     });
 
     // #14：列表放开给客户角色（RLS 过滤 → 只见所属客户，只读）；编辑 PATCH 仍 403
