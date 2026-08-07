@@ -71,6 +71,18 @@ export type KbDocType = (typeof KB_DOC_TYPES)[number];
 export const KB_STATUSES = ['draft', 'published', 'archived'] as const;
 export type KbStatus = (typeof KB_STATUSES)[number];
 
+/** LLM 场景（spec #80 场景化多模型路由，issue #24；4 场景定稿，DB check 同步） */
+export const LLM_SCENES = ['agent', 'document_parsing', 'manual_generation', 'embedding'] as const;
+export type LlmScene = (typeof LLM_SCENES)[number];
+
+/** 场景中文标签（契约 ai/config 与 web 配置页共用） */
+export const LLM_SCENE_LABELS: Record<LlmScene, string> = {
+  agent: '客服问答',
+  document_parsing: '文档解析',
+  manual_generation: '操作手册生成',
+  embedding: '向量化（Embedding）',
+};
+
 export const DEFAULT_ACCESS_TOKEN_TTL = '15m';
 export const DEFAULT_REFRESH_TOKEN_TTL = '30d';
 

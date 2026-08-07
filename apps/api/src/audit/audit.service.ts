@@ -45,6 +45,8 @@ export const AUDIT_ACTIONS = {
   AGENT_CONVERSATION_CREATE: 'agent.conversation_create',
   AGENT_CHAT: 'agent.chat',
   USAGE_VIEW: 'usage.view',
+  AI_IMAGE_PARSE: 'ai.image_parse',
+  AI_CONFIG_VIEW: 'ai.config_view',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

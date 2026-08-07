@@ -11,3 +11,4 @@ export * from './kb';
 export * from './rag';
 export * from './agent';
 export * from './usage';
+export * from './ai';

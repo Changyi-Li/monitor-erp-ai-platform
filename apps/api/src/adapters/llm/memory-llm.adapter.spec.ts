@@ -97,3 +97,75 @@ describe('memory LLM fake：确定性回答', () => {
     expect(usage.outputTokens).toBe(Math.ceil(content.length / 4));
   });
 });
+
+describe('memory LLM fake：多模态（issue #24）', () => {
+  const llm = new MemoryLlmAdapter();
+
+  const imageSystem = [
+    '你是 Monitor G5 ERP 平台的 AI 图片解析器。请解析用户上传的图片，输出结构化流程描述。',
+    '[图片解析]',
+  ].join('\n');
+
+  const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  it('system 含 [图片解析] + user 含图片 → 确定性流程模板', async () => {
+    const { content } = await llm.chat({
+      messages: [
+        { role: 'system', content: imageSystem },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '请解析这张图片' },
+            { type: 'image_url', imageUrl: dataUrl },
+          ],
+        },
+      ],
+    });
+    expect(content).toContain('流程解析（memory 驱动模拟）');
+    expect(content).toContain('结构化输出');
+    expect(content).toContain('Qwen-VL');
+  });
+
+  it('system 无 [图片解析] 标记 → 不触发模板（走检索规则）', async () => {
+    const { content } = await llm.chat({
+      messages: [
+        { role: 'system', content: systemWithDocs },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '如何登录？' },
+            { type: 'image_url', imageUrl: dataUrl },
+          ],
+        },
+      ],
+    });
+    expect(content).toContain('根据知识库「登录问题 FAQ」');
+    expect(content).not.toContain('流程解析');
+  });
+
+  it('user 无图片 part（纯文本 parts）→ 走检索规则', async () => {
+    const { content } = await llm.chat({
+      messages: [
+        { role: 'system', content: imageSystem },
+        { role: 'user', content: [{ type: 'text', text: '如何登录？' }] },
+      ],
+    });
+    expect(content).not.toContain('流程解析');
+  });
+
+  it('估算按 messageText 归一化（图片 data URL 全串计入字符）', async () => {
+    const messages = [
+      { role: 'system', content: imageSystem },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: '请解析' },
+          { type: 'image_url', imageUrl: dataUrl },
+        ],
+      },
+    ];
+    const { usage } = await llm.chat({ messages });
+    const inputChars = '请解析'.length + dataUrl.length + imageSystem.length;
+    expect(usage.inputTokens).toBe(Math.ceil(inputChars / 4));
+  });
+});

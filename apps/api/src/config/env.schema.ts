@@ -15,8 +15,31 @@ export const EnvSchema = z.object({
   STORAGE_DRIVER: z.enum(['memory']).default('memory'),
   MQ_DRIVER: z.enum(['memory']).default('memory'),
   INDEX_DRIVER: z.enum(['memory']).default('memory'),
-  // LLM 门面（切片 13/14 扩 openai-compatible 时只扩 enum + 加 case）
-  LLM_DRIVER: z.enum(['memory']).default('memory'),
+  // LLM 门面（issue #24 场景化多模型路由）：场景专属驱动优先，缺省回退 LLM_DRIVER
+  LLM_DRIVER: z.enum(['memory', 'openai']).default('memory'),
+  LLM_DRIVER_AGENT: z.enum(['memory', 'openai']).optional(),
+  LLM_DRIVER_DOCUMENT_PARSING: z.enum(['memory', 'openai']).optional(),
+  LLM_DRIVER_MANUAL_GENERATION: z.enum(['memory', 'openai']).optional(),
+  LLM_DRIVER_EMBEDDING: z.enum(['memory', 'openai']).optional(),
+  // openai-compatible 驱动（DashScope/DeepSeek/GLM；缺省值见 ADR 0013）
+  LLM_OPENAI_BASE_URL: z.url().optional(),
+  LLM_OPENAI_API_KEY: z.string().min(1).optional(),
+  LLM_OPENAI_MODEL: z.string().min(1).optional(),
+}).superRefine((env, ctx) => {
+  // 任一场景解析为 openai 驱动但缺 API Key → 启动期 fail-fast（llm.module 构造也会抛，双保险）
+  const usesOpenai =
+    env.LLM_DRIVER === 'openai' ||
+    env.LLM_DRIVER_AGENT === 'openai' ||
+    env.LLM_DRIVER_DOCUMENT_PARSING === 'openai' ||
+    env.LLM_DRIVER_MANUAL_GENERATION === 'openai' ||
+    env.LLM_DRIVER_EMBEDDING === 'openai';
+  if (usesOpenai && !env.LLM_OPENAI_API_KEY) {
+    ctx.addIssue({
+      code: 'custom',
+      message: '配置了 openai 驱动但缺少 LLM_OPENAI_API_KEY',
+      path: ['LLM_OPENAI_API_KEY'],
+    });
+  }
 });
 export type Env = z.infer<typeof EnvSchema>;
 

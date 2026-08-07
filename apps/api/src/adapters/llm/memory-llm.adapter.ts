@@ -1,4 +1,5 @@
-import type { LLMClient, LlmChatInput, LlmChatResult } from './llm-client.port';
+import type { LLMClient, LlmChatInput, LlmChatResult, LlmChatMessage } from './llm-client.port';
+import { messageText } from './llm-client.port';
 
 /**
  * memory fake 驱动：确定性规则回答（无网络/随机/时间依赖，e2e 可断言）。
@@ -14,16 +15,29 @@ import type { LLMClient, LlmChatInput, LlmChatResult } from './llm-client.port';
  * - 用户问题含「刚才/上一问/引用/来源」（追问）→ 复述上一轮用户问题 + 其引用（证明多轮记忆，
  *   记忆来自 prompt 注入的 history——真实 LLM 同机制）
  * - 无检索结果 → 「抱歉，知识库中未找到相关信息。」（不带角标）
+ * - 多模态（issue #24）：user 消息含 image part 且 system 含「[图片解析]」区块标记 →
+ *   返回确定性结构化流程模板（真实图片理解需配 Qwen-VL 等视觉模型，fake 仅演示链路）
  *
- * 用量（issue #23）：确定性估算——inputTokens = ceil(全部消息字符和 / 4)，
- * outputTokens = ceil(回答字符 / 4)，model='memory'（真实驱动填真实值，接缝不变）。
+ * 用量（issue #23）：确定性估算——inputTokens = ceil(全部消息字符和 / 4)（多模态
+ * 经 messageText 归一化，图片按 data URL 全串字符计入），outputTokens = ceil(回答字符 / 4)，
+ * model='memory'（真实驱动填真实值，接缝不变）。
  */
 export class MemoryLlmAdapter implements LLMClient {
   async chat(input: LlmChatInput): Promise<LlmChatResult> {
-    const userText = [...input.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-    const systemText = input.messages[0]?.content ?? '';
+    const userMessage = [...input.messages].reverse().find((m) => m.role === 'user');
+    const userText = userMessage ? messageText(userMessage) : '';
+    const systemText = typeof input.messages[0]?.content === 'string' ? input.messages[0].content : '';
 
     const usage = this.estimateUsage(input);
+
+    // 多模态规则：user 消息含图片 + system 约定 [图片解析] 区块（ai.service 组装）→ 流程模板
+    if (systemText.includes('[图片解析]') && userMessage && hasImagePart(userMessage)) {
+      const content =
+        '流程解析（memory 驱动模拟）：1. 上传文件识别 2. 图片解析（当前为确定性模拟）' +
+        '3. 结构化输出——流程步骤 / 模块依赖 / 数据流向。' +
+        '配置 LLM_DRIVER_DOCUMENT_PARSING=openai 后由真实视觉模型（如 Qwen-VL）解析。';
+      return { content, usage: { ...usage, outputTokens: this.estimateTokens(content) } };
+    }
 
     const retrieved = this.parseRetrieved(systemText);
     if (retrieved.length === 0) {
@@ -45,9 +59,9 @@ export class MemoryLlmAdapter implements LLMClient {
     return { content, usage: { ...usage, outputTokens: this.estimateTokens(content) } };
   }
 
-  /** 输入 token 估算 = ceil(全部消息字符和 / 4)；输出按回答内容另算 */
+  /** 输入 token 估算 = ceil(全部消息 messageText 字符和 / 4)；输出按回答内容另算 */
   private estimateUsage(input: LlmChatInput): { model: string; inputTokens: number; outputTokens: number } {
-    const chars = input.messages.reduce((sum, m) => sum + m.content.length, 0);
+    const chars = input.messages.reduce((sum, m) => sum + messageText(m).length, 0);
     return { model: 'memory', inputTokens: Math.ceil(chars / 4), outputTokens: 0 };
   }
 
@@ -77,4 +91,9 @@ export class MemoryLlmAdapter implements LLMClient {
     }
     return history;
   }
+}
+
+/** 消息是否含图片段（多模态规则触发条件；imageUrl 支持 data URL / https） */
+function hasImagePart(m: LlmChatMessage): boolean {
+  return Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url');
 }

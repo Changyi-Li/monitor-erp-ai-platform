@@ -49,6 +49,9 @@ export default function HomePage() {
             <Link href="/usage" style={{ color: '#2563eb' }}>
               用量统计 →
             </Link>
+            <Link href="/ai" style={{ color: '#2563eb' }}>
+              AI 配置 →
+            </Link>
           </>
         )}
       </p>

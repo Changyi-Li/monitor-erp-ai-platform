@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LLM_SCENES } from '@monitor/shared';
 
 /**
  * AI Token 用量计量（issue #23，spec #77–#79）：
@@ -8,9 +9,9 @@ import { z } from 'zod';
  * sum(costUsd) + RAG Index 规格费 21.6 元/月/客户）。
  */
 
-/** spec 定稿 4 场景（本期仅 agent 产生数据，其余随切片 13/14、15 填充） */
-export const USAGE_SCENES = ['agent', 'document_parsing', 'manual_generation', 'embedding'] as const;
-export const UsageSceneSchema = z.enum(USAGE_SCENES);
+/** 场景单一事实来源在 shared LLM_SCENES（issue #24 场景路由后同源） */
+export const USAGE_SCENES = LLM_SCENES;
+export const UsageSceneSchema = z.enum(LLM_SCENES);
 export type UsageScene = z.output<typeof UsageSceneSchema>;
 
 /** summary 查询（全部 optional；非法枚举/非法日期 → 400） */
