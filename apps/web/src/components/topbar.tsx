@@ -36,6 +36,7 @@ export function Topbar() {
             <nav style={{ display: 'flex', gap: 12 }}>
               <Link href="/customers">客户</Link>
               <Link href="/projects">项目</Link>
+              <Link href="/kb">知识库</Link>
               {isPlatformRole(user.role) && (
                 <>
                   <Link href="/users">用户管理</Link>

@@ -132,6 +132,9 @@ export default function ProjectDetailPage() {
         <Link href={`/projects/${id}/manuals`} style={{ color: '#2563eb' }}>
           操作手册 →
         </Link>
+        <Link href="/kb" style={{ color: '#2563eb' }}>
+          知识库 →
+        </Link>
       </p>
 
       {canManage && (
