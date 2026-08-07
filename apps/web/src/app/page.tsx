@@ -43,6 +43,9 @@ export default function HomePage() {
             <Link href="/rag" style={{ color: '#2563eb' }}>
               RAG 调试台 →
             </Link>
+            <Link href="/import" style={{ color: '#2563eb' }}>
+              导入调试台 →
+            </Link>
             <Link href="/agent" style={{ color: '#2563eb' }}>
               AI 客服 →
             </Link>

@@ -25,6 +25,12 @@ export const EnvSchema = z.object({
   LLM_OPENAI_BASE_URL: z.url().optional(),
   LLM_OPENAI_API_KEY: z.string().min(1).optional(),
   LLM_OPENAI_MODEL: z.string().min(1).optional(),
+  // Online help 导入（issue #25）：IMPORT_API_KEY 未配置 → API 通道禁用（仅 JWT 调试页）；
+  // IMPORT_FETCH_URL 未配置 → 定时拉取 worker 不启动（功能自然关闭）
+  IMPORT_API_KEY: z.string().min(16).optional(),
+  IMPORT_FETCH_URL: z.url().optional(),
+  IMPORT_FETCH_API_KEY: z.string().min(1).optional(),
+  IMPORT_FETCH_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
 }).superRefine((env, ctx) => {
   // 任一场景解析为 openai 驱动但缺 API Key → 启动期 fail-fast（llm.module 构造也会抛，双保险）
   const usesOpenai =

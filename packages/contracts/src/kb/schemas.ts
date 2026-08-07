@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   KB_CATEGORIES,
   KB_DOC_TYPES,
+  KB_SOURCES,
   KB_STATUSES,
 } from '@monitor/shared';
 
@@ -27,13 +28,14 @@ export const KbFileSchema = z.object({
 });
 export type KbFile = z.output<typeof KbFileSchema>;
 
-/** 知识库文档（列表/详情统一形状；hasDraft = 已发布 + 有待发布草稿修改） */
+/** 知识库文档（列表/详情统一形状；hasDraft = 已发布 + 有待发布草稿修改；source = 内部创作/外部导入只读） */
 export const KbDocumentSchema = z.object({
   id: z.uuid(),
   title: z.string().trim().min(1).max(255),
   category: z.enum(KB_CATEGORIES),
   docType: z.enum(KB_DOC_TYPES),
   status: z.enum(KB_STATUSES),
+  source: z.enum(KB_SOURCES),
   hasDraft: z.boolean(),
   createdBy: z.object({ id: z.uuid(), displayName: z.string() }).nullable(), // 创建人（join users）
   createdAt: z.iso.datetime(),

@@ -1,4 +1,4 @@
-import type { KbCategory, KbStatus } from '@monitor/shared';
+import type { KbCategory, KbSource, KbStatus } from '@monitor/shared';
 
 /** 知识库字段的中文标签（issue #19；枚举值存英文，展示转中文） */
 export const KB_CATEGORY_LABELS: Record<KbCategory, string> = {
@@ -18,4 +18,10 @@ export const KB_STATUS_COLORS: Record<KbStatus, string> = {
   draft: '#b45309', // 琥珀
   published: '#15803d', // 绿
   archived: '#6b7280', // 灰
+};
+
+/** 来源徽标（issue #25：外部导入文档标记「外部 · 只读」） */
+export const KB_SOURCE_LABELS: Record<KbSource, string> = {
+  manual: '内部',
+  online_help: '外部 · 只读',
 };

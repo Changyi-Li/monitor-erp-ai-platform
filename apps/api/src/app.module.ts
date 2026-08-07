@@ -24,6 +24,7 @@ import { StagesModule } from './stages/stages.module';
 import { RagModule } from './rag/rag.module';
 import { UsageModule } from './usage/usage.module';
 import { AiModule } from './ai/ai.module';
+import { ImportsModule } from './imports/imports.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AiModule } from './ai/ai.module';
     AgentModule,
     UsageModule,
     AiModule,
+    ImportsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -71,6 +71,22 @@ export type KbDocType = (typeof KB_DOC_TYPES)[number];
 export const KB_STATUSES = ['draft', 'published', 'archived'] as const;
 export type KbStatus = (typeof KB_STATUSES)[number];
 
+/** 知识库文档来源（issue #25：内部创作 / 外部导入；online_help 只读，externalKey 非空） */
+export const KB_SOURCES = ['manual', 'online_help'] as const;
+export type KbSource = (typeof KB_SOURCES)[number];
+
+/** 导入通道（issue #25：外部项目推送 / 平台定时拉取；externalKey = `${channel}:${sourceKey}` 键空间隔离） */
+export const IMPORT_CHANNELS = ['api', 'fetch'] as const;
+export type ImportChannel = (typeof IMPORT_CHANNELS)[number];
+
+/** 导入动作（upsert = 新文档/变更；delete = 移除） */
+export const IMPORT_ACTIONS = ['upsert', 'delete'] as const;
+export type ImportAction = (typeof IMPORT_ACTIONS)[number];
+
+/** 导入暂存状态（import_staged_documents.status；消费后 processed，失败退避重试） */
+export const IMPORT_STAGED_STATUSES = ['pending', 'processing', 'processed', 'failed'] as const;
+export type ImportStagedStatus = (typeof IMPORT_STAGED_STATUSES)[number];
+
 /** LLM 场景（spec #80 场景化多模型路由，issue #24；4 场景定稿，DB check 同步） */
 export const LLM_SCENES = ['agent', 'document_parsing', 'manual_generation', 'embedding'] as const;
 export type LlmScene = (typeof LLM_SCENES)[number];

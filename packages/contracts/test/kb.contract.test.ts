@@ -20,6 +20,7 @@ const validDoc = {
   category: 'manual',
   docType: 'markdown',
   status: 'published',
+  source: 'manual',
   hasDraft: false,
   createdBy: { id: validUuid, displayName: '实施顾问' },
   createdAt: validIsoDate,

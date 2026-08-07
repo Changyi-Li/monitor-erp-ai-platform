@@ -8,7 +8,12 @@ import {
   type KbDocument,
   type KbListResponse,
 } from '@monitor/contracts';
-import { KB_CATEGORY_LABELS, KB_STATUS_COLORS, KB_STATUS_LABELS } from '../../lib/kb-labels';
+import {
+  KB_CATEGORY_LABELS,
+  KB_SOURCE_LABELS,
+  KB_STATUS_COLORS,
+  KB_STATUS_LABELS,
+} from '../../lib/kb-labels';
 import { apiFetch, errorMessage } from '../../lib/api';
 
 /**
@@ -347,6 +352,19 @@ export default function KbPage() {
                 >
                   {KB_STATUS_LABELS[doc.status]}
                 </span>
+                {doc.source === 'online_help' && (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      padding: '1px 8px',
+                      borderRadius: 999,
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                    }}
+                  >
+                    {KB_SOURCE_LABELS[doc.source]}
+                  </span>
+                )}
                 {doc.hasDraft && (
                   <span
                     style={{

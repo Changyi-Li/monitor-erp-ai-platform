@@ -353,6 +353,10 @@ export class KbService {
     const viewerRole = await this.resolveViewerRole(actor, ctx);
     this.assertCanManage(viewerRole, '仅内部用户可维护知识库文档');
     const row = await this.requireDocument(documentId);
+    // 外部导入文档只读（issue #25 AC3）：在线编辑禁用，内容只能由导入通道更新
+    if (row.source === 'online_help') {
+      throw new BadRequestException('外部导入文档只读，不可在线编辑');
+    }
     if (row.status === 'archived') {
       throw new BadRequestException('归档文档不可编辑，请先恢复');
     }
@@ -735,6 +739,7 @@ function toDocumentDto(
     title: row.title,
     category: row.category as KbDocumentDetail['category'],
     docType: row.docType as KbDocumentDetail['docType'],
+    source: row.source as KbDocumentDetail['source'],
     status: row.status as KbDocumentDetail['status'],
     hasDraft,
     createdBy: row.createdById ? { id: row.createdById, displayName: createdByName ?? '' } : null,

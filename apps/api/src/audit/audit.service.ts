@@ -47,6 +47,10 @@ export const AUDIT_ACTIONS = {
   USAGE_VIEW: 'usage.view',
   AI_IMAGE_PARSE: 'ai.image_parse',
   AI_CONFIG_VIEW: 'ai.config_view',
+  IMPORT_PUSH: 'import.push',
+  IMPORT_APPLY: 'import.apply',
+  IMPORT_DELETE: 'import.delete',
+  IMPORT_FETCH: 'import.fetch',
 } as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 

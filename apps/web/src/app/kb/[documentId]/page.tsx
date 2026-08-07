@@ -270,7 +270,21 @@ export default function KbDocumentPage() {
             有待发布修改
           </span>
         )}
-        {canManage && !editing && (
+        {doc.source === 'online_help' && (
+          <span
+            style={{
+              fontSize: 12,
+              padding: '1px 8px',
+              borderRadius: 999,
+              background: '#eff6ff',
+              color: '#1d4ed8',
+            }}
+          >
+            外部 · 只读
+          </span>
+        )}
+        {/* 外部导入文档只读（issue #25 AC3）：在线编辑禁用，发布/归档/恢复保留（人工发布后进 RAG） */}
+        {canManage && !editing && doc.source !== 'online_help' && (
           <button type="button" onClick={startEdit}>
             编辑
           </button>

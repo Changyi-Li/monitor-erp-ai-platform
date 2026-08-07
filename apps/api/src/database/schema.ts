@@ -656,12 +656,22 @@ export const kbDocuments = pgTable(
     docType: text('doc_type').notNull(),
     // 'draft' | 'published' | 'archived'
     status: text('status').notNull().default('draft'),
+    // 'manual' | 'online_help'（issue #25：内部创作 / 外部导入只读；online_help 不可在线编辑）
+    source: text('source').notNull().default('manual'),
+    // online_help 来源文档唯一键 = `${channel}:${sourceKey}`（通道前缀隔离键空间）
+    externalKey: text('external_key'),
+    // 当前已应用内容的 sha256（apply 幂等 + 去重判定）
+    fingerprint: text('fingerprint'),
     createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }), // 创建人
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('kb_documents_category_status_idx').on(t.category, t.status),
+    uniqueIndex('kb_documents_external_key_unique')
+      .on(t.source, t.externalKey)
+      .where(sql`${t.source} = 'online_help' and ${t.externalKey} is not null`),
+    check('kb_documents_source_check', sql`${t.source} in ('manual','online_help')`),
     pgPolicy('kb_documents_internal_manage', {
       as: 'permissive',
       for: 'all',
@@ -720,6 +730,63 @@ export const kbDocumentVersions = pgTable(
       for: 'select',
       to: appTenantUser,
       using: sql`exists(select 1 from kb_documents d where d.id = ${t.documentId} and d.status = 'published')`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * Online help 导入暂存队列（issue #25，spec §4.4）：导入 API（外部推送）与定时拉取
+ * （平台拉外部文档清单）双通道的唯一入队入口，消费 worker 增量落库。
+ * 幂等：unique(source, sourceKey, action)——同源同键重复推送去重（指纹相同 → 仅
+ * duplicateCount+1；指纹变化 → 原地重置 pending 重新消费）；body/base64 原样暂存
+ * （apply 时才解码/写存储）。全局内部域：RLS 单策略 internal_bypass（同 ai_conversations
+ * 先例，客户连接 0 行 fail closed）。documentId 无 FK（apply 后关联，文档会被硬删）。
+ */
+export const importStagedDocuments = pgTable(
+  'import_staged_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // 'api' | 'fetch'（externalKey = `${source}:${sourceKey}` 前缀）
+    source: text('source').notNull(),
+    sourceKey: text('source_key').notNull(), // 外部源文档唯一键（原样存）
+    action: text('action').notNull(), // 'upsert' | 'delete'
+    fingerprint: text('fingerprint').notNull(), // sha256（markdown → body UTF-8；file → 解码 buffer）
+    title: text('title').notNull(),
+    category: text('category').notNull(), // 'manual' | 'faq' | 'best_practice'
+    docType: text('doc_type').notNull(), // 'markdown' | 'file'
+    body: text('body'), // markdown 正文
+    fileName: text('file_name'), // 文件类三件套
+    contentType: text('content_type'),
+    base64: text('base64'), // 文件类原样暂存（≤8M 字符 ≈6MB，同 kb 上传限）
+    metadata: jsonb('metadata'),
+    documentId: uuid('document_id'), // apply 后关联的 kb 文档（无 FK——文档会被硬删）
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    status: text('status').notNull().default('pending'), // 'pending' | 'processing' | 'processed' | 'failed'
+    attempt: integer('attempt').notNull().default(0),
+    nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    duplicateCount: integer('duplicate_count').notNull().default(0), // 重复推送/拉取计数（去重日志可见）
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('import_staged_key_unique').on(t.source, t.sourceKey, t.action), // 幂等键
+    index('import_staged_status_idx').on(t.status, t.nextRetryAt),
+    index('import_staged_source_key_idx').on(t.sourceKey),
+    check('import_staged_source_check', sql`${t.source} in ('api','fetch')`),
+    check('import_staged_action_check', sql`${t.action} in ('upsert','delete')`),
+    check('import_staged_category_check', sql`${t.category} in ('manual','faq','best_practice')`),
+    check('import_staged_doc_type_check', sql`${t.docType} in ('markdown','file')`),
+    check(
+      'import_staged_status_check',
+      sql`${t.status} in ('pending','processing','processed','failed')`,
+    ),
+    pgPolicy('import_staged_internal_bypass', {
+      as: 'permissive',
+      for: 'all',
+      to: appTenantUser,
+      using: sql`current_setting('app.is_internal', true) = 'true'`,
+      withCheck: sql`current_setting('app.is_internal', true) = 'true'`,
     }),
   ],
 ).enableRLS();
@@ -923,6 +990,7 @@ export type MeetingMinuteRow = typeof meetingMinutes.$inferSelect;
 export type MinuteAttachmentRow = typeof minuteAttachments.$inferSelect;
 export type KbDocumentRow = typeof kbDocuments.$inferSelect;
 export type KbDocumentVersionRow = typeof kbDocumentVersions.$inferSelect;
+export type ImportStagedRow = typeof importStagedDocuments.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;
 export type AiConversationRow = typeof aiConversations.$inferSelect;
 export type AiMessageRow = typeof aiMessages.$inferSelect;
