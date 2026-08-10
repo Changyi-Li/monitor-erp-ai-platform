@@ -139,7 +139,8 @@ a {
   align-items: center;
   justify-content: center;
   padding: 0 12px;
-  border: none;
+  /* 用户反馈：边框要显眼些——1px 实线用 --mwc-border（随明暗主题，默认 #d1d5db） */
+  border: 1px solid var(--mwc-border, #d1d5db);
   border-radius: 4px;
   font-size: 14px;
   cursor: pointer;
@@ -156,7 +157,8 @@ a {
 .dx-button-mode-text:hover:not(:disabled),
 .dx-button-mode-text:focus:not(:disabled) { background-color: rgba(0, 0, 0, 0.08); }
 .dx-button-mode-text:active:not(:disabled) { background-color: rgba(0, 0, 0, 0.3); }
-.dx-button-mode-text:disabled { opacity: 0.5; cursor: default; }
+/* 原版 dx-state-disabled：整体半透明 + 宽度贴合内容（styles-25UOYN5D 覆盖规则） */
+.dx-button-mode-text:disabled { opacity: 0.5; min-width: fit-content; cursor: default; }
 .dx-button-text { text-transform: unset; }
 .mwc-defined-width { flex-grow: 1; }
 .icon-toggle-favourite-o:before { content: '\ea56'; }

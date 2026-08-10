@@ -15,6 +15,7 @@ import {
 import { apiFetch, errorMessage } from '../../lib/api';
 import { useAuth } from '../../components/auth-provider';
 import { userRoleLabel } from '../../lib/roles';
+import type { UserRole } from '@monitor/shared';
 
 /**
  * 用户管理（内部/超管专属；issue #37 模仿原版 WebClient「用户」程序布局）。
@@ -35,6 +36,12 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveOk, setSaveOk] = useState('');
+
+  // 角色草稿（#38 角色页签：超管可改平台角色；保存走同一 PATCH 端点）
+  const [roleDraft, setRoleDraft] = useState<UserRole>('internal');
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [roleSaveError, setRoleSaveError] = useState('');
+  const [roleSaveOk, setRoleSaveOk] = useState('');
 
   // 页签（原版 mwc-tabs；角色/用户权限内容 #38 完善，本 ticket 先呈现只读摘要；
   // 管理操作 = 建内部用户/建客户，超管专属，跟在「用户权限」后面）
@@ -81,38 +88,78 @@ export default function UsersPage() {
     return list.filter((u) => u.displayName.toLowerCase().includes(q));
   }, [data, nameQuery]);
 
-  // 选中用户变化 → 描述草稿同步（避免保存旧用户残留）
+  // 选中用户变化 → 描述/角色草稿同步（避免保存旧用户残留）
   useEffect(() => {
     setDescriptionDraft(selectedUser?.description ?? '');
+    setRoleDraft(selectedUser?.role ?? 'internal');
     setSaveOk('');
     setSaveError('');
+    setRoleSaveOk('');
+    setRoleSaveError('');
   }, [selectedUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSuperAdmin = user?.role === 'super_admin';
 
-  async function handleSaveDescription(e: React.FormEvent) {
+  // header 保存按钮：保存页面上所有操作（描述 + 角色变更一起提交，用户定义）
+  async function handleSaveAll(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedUser) return;
+    // 角色变更仅当目标非自己、非 customer（后端对应 409 防护）时随描述一起提交
+    const canChangeRole =
+      isSuperAdmin && selectedUser.id !== user?.id && selectedUser.role !== 'customer';
+    const roleChanged = canChangeRole && roleDraft !== selectedUser.role;
     setSaveError('');
     setSaveOk('');
+    setRoleSaveError('');
+    setRoleSaveOk('');
     setSaving(true);
     try {
       const res = await apiFetch(`/api/users/${selectedUser.id}`, {
         method: 'PATCH',
-        body: { description: descriptionDraft || null },
+        body: {
+          description: descriptionDraft || null,
+          ...(roleChanged && { role: roleDraft }),
+        },
         schema: UpdateUserResponseSchema,
       });
-      // 同步列表数据（描述持久化后刷新可见）
+      // 同步列表数据（持久化后刷新可见）
       setData((cur) =>
         cur
           ? { users: cur.users.map((u) => (u.id === res.user.id ? res.user : u)) }
           : cur,
       );
-      setSaveOk('已保存描述');
+      setSaveOk('已保存');
     } catch (err) {
       setSaveError(errorMessage(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveRole(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedUser || roleDraft === selectedUser.role) return;
+    setRoleSaveError('');
+    setRoleSaveOk('');
+    setRoleSaving(true);
+    try {
+      const res = await apiFetch(`/api/users/${selectedUser.id}`, {
+        method: 'PATCH',
+        body: { role: roleDraft },
+        schema: UpdateUserResponseSchema,
+      });
+      // 同步列表数据（角色持久化后列表与页签可见）；JWT 携带旧角色声明，
+      // 被改用户重新登录后权限才生效（RolesGuard 从 JWT 读角色）
+      setData((cur) =>
+        cur
+          ? { users: cur.users.map((u) => (u.id === res.user.id ? res.user : u)) }
+          : cur,
+      );
+      setRoleSaveOk('角色已更新，该用户重新登录后生效');
+    } catch (err) {
+      setRoleSaveError(errorMessage(err));
+    } finally {
+      setRoleSaving(false);
     }
   }
 
@@ -259,7 +306,7 @@ export default function UsersPage() {
             <>
               {/* header 区（原版 header section：bnCurrentKey + 描述 + 许可） */}
               <form
-                onSubmit={handleSaveDescription}
+                onSubmit={handleSaveAll}
                 style={{
                   display: 'flex',
                   alignItems: 'flex-end',
@@ -402,8 +449,52 @@ export default function UsersPage() {
                         : selectedUser.role === 'internal'
                           ? '内部用户：全部业务功能与 AI 工具。'
                           : '客户角色：仅客户/项目/知识库。'}
-                      {isSuperAdmin && '（角色修改由后续迭代提供）'}
                     </p>
+                    {isSuperAdmin ? (
+                      // #38：超管可改平台角色（self 与 customer 不可改，用户已拍板）
+                      selectedUser.id === user?.id ? (
+                        <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light, #6b7280)' }}>
+                          不能修改自己的角色
+                        </p>
+                      ) : selectedUser.role === 'customer' ? (
+                        <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light, #6b7280)' }}>
+                          客户角色不可在此修改
+                        </p>
+                      ) : (
+                        <form
+                          onSubmit={handleSaveRole}
+                          style={{
+                            display: 'flex',
+                            gap: 8,
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            marginTop: 12,
+                          }}
+                        >
+                          <select
+                            value={roleDraft}
+                            onChange={(e) => setRoleDraft(e.target.value as UserRole)}
+                            style={inputStyle}
+                            aria-label="角色"
+                          >
+                            {(['internal', 'super_admin'] as const).map((r) => (
+                              <option key={r} value={r}>
+                                {userRoleLabel(r)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            disabled={roleSaving || roleDraft === selectedUser.role}
+                            className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                          >
+                            <span className="dx-button-text">{roleSaving ? '保存中…' : '保存'}</span>
+                          </button>
+                          {roleSaveOk && <span style={{ color: '#15803d' }}>{roleSaveOk}</span>}
+                          {roleSaveError && <span style={{ color: '#b91c1c' }}>{roleSaveError}</span>}
+                        </form>
+                      )
+                    ) : null}
                   </div>
                 )}
                 {activeTab === 'permissions' && (
