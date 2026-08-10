@@ -176,16 +176,10 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     }
   }, [status, pathname, router]);
 
-  // 认证页全屏展示，不渲染主框架
-  if (pathname === '/login' || pathname === '/register') return <>{children}</>;
-
-  async function handleLogout() {
-    await logout();
-    router.push('/login');
-  }
-
   // 路由 → 模块反查（issue #36）：遍历模块菜单数据，当前路径命中的程序项所属模块
-  // 即为 active 模块。数据驱动，新增页面无需硬编码映射（/ → 默认视图，无模块）
+  // 即为 active 模块。数据驱动，新增页面无需硬编码映射（/ → 默认视图，无模块）。
+  // 注意：必须放在认证页早 return 之前——否则 /login → /users 切换时
+  // hooks 顺序变化（React Rules of Hooks 报错）
   const routeModuleKey = useMemo(() => {
     for (const m of monitorModules) {
       for (const cat of m.categories) {
@@ -203,6 +197,14 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
       setSelectedModuleKey(routeModuleKey);
     }
   }, [routeModuleKey]);
+
+  // 认证页全屏展示，不渲染主框架
+  if (pathname === '/login' || pathname === '/register') return <>{children}</>;
+
+  async function handleLogout() {
+    await logout();
+    router.push('/login');
+  }
 
   const selectedModule =
     monitorModules.find((m) => m.key === selectedModuleKey) ?? null;

@@ -4,6 +4,9 @@ import { AuthProvider } from '../components/auth-provider';
 import { ChatWidget } from '../components/chat-widget';
 import { MonitorFrame } from '../components/monitor-frame';
 import './globals.css';
+// Font Awesome 免费图标（保存按钮等通用图标；FA7 中图标 class 映射在 all.css，
+// solid.css 仅含字体声明，故用 all.min.css）
+import '@fortawesome/fontawesome-free/css/all.min.css';
 
 export const metadata: Metadata = {
   title: 'Monitor ERP AI Platform',

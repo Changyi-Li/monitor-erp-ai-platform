@@ -105,6 +105,60 @@ a {
 .icon-toggle-night-o:before { content: '\ea73'; }
 .icon-toggle-night:before { content: '\ea72'; }
 .icon-button-window-new:before { content: '\e9e3'; }
+.icon-button-save:before { content: '\e9b3'; }
+
+/* 原版 dx-icon 着色类（color-primary / -light / -strong 三档主色） */
+.color-primary { color: var(--mwc-primary); }
+.color-primary-light { color: var(--mwc-primary-light, #9aa7b4); }
+.color-primary-strong { color: var(--mwc-primary-strong, #00b1f1); }
+
+/* 原版 icon 按钮（如「用户」header 保存）：透明底无边框，hover 加深，disabled 半透明；
+   图标字号对齐原版 dx-button 的 --mwc-icon-normal: 14px（FA 图标继承该字号） */
+.icon-button-action {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  opacity: 0.9;
+  font-size: 14px;
+  transition: opacity 0.15s ease;
+}
+.icon-button-action:hover:not(:disabled) { opacity: 1; }
+.icon-button-action:disabled { opacity: 0.3; cursor: default; }
+/* Bootstrap 字号工具类（fs-3 = 1.75rem = 28px）：保存按钮图标放大用 */
+.fs-3 { font-size: 1.75rem; }
+/* 原版 dx-button text mode（管理操作提交按钮，仿「登记设备」setupMfa）：
+   透明底 + 主题色文字 + 28px 高，hover/focus 淡黑背景，active 深黑，disabled 半透明。
+   样式取自 dx_theme_material_blue 与 styles-25UOYN5D（--mwc-icon-normal: 14px 字号） */
+.dx-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.dx-button.dx-button-mode-text {
+  height: 28px;
+  margin-top: 1px;
+  margin-bottom: 3px;
+  margin-inline: 5px;
+  background: transparent;
+  color: var(--mwc-primary);
+}
+.dx-button-mode-text:hover:not(:disabled),
+.dx-button-mode-text:focus:not(:disabled) { background-color: rgba(0, 0, 0, 0.08); }
+.dx-button-mode-text:active:not(:disabled) { background-color: rgba(0, 0, 0, 0.3); }
+.dx-button-mode-text:disabled { opacity: 0.5; cursor: default; }
+.dx-button-text { text-transform: unset; }
+.mwc-defined-width { flex-grow: 1; }
 .icon-toggle-favourite-o:before { content: '\ea56'; }
 
 /* Monitor 主框架布局（模块导轨 + 侧边菜单 + 顶栏 + 内容区）。
