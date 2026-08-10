@@ -113,7 +113,7 @@ a {
    - 侧边菜单 252px，背景 --mwc-stronger-light
    - 顶栏 --mwc-lighter，状态栏 8pt 20px + 操作行 44px
    亮色主题变量与 Monitor dx_theme_material_blue_light_contrast 一致；
-   暗色由 #33 主题切换补充。 */
+   暗色主题见下方 body.monitor-dark-contrast 覆盖块（#33）。 */
 :root {
   --menu-container-width: 64px;
   --menu-container-height: 64px;
@@ -162,6 +162,151 @@ a {
   --mwc-gap-normal: 4px;
   --mwc-icon-large: 20px;
   --mwc-title: var(--mwc-primary);
+  /* mwc 亮色主题补全（dx_theme_material_blue_light_contrast）：
+     暗色覆盖块按同名变量覆盖，两套色板必须同构 */
+  --mwc-text-strong: #000000;
+  --mwc-text-dim: #171a1c80;
+  --mwc-text-inverted-strong: #e9ebec;
+  --mwc-text-inverted-light: #ffffff;
+  --mwc-text-inverted-dim: #f9fafa80;
+  --mwc-lighter-dim: #f5f5f580;
+  --mwc-stronger-dim: #07060680;
+  --mwc-stronger-transparent: #4d4d4d15;
+  --mwc-border-strong: #bfc1c4;
+  --mwc-border-light: #e2e3e4;
+  --mwc-border-dim: var(--mwc-text-inverted-strong);
+  --mwc-button-border: #22506733;
+  --mwc-primary-light: #0c9ce4;
+  --mwc-primary-strong: #0e5477;
+  --mwc-primary-dim: #007ebd33;
+  --mwc-primary-transparent: #007ebd15;
+  --mwc-secondary-light: #4389ad;
+  --mwc-secondary-strong: #225067;
+  --mwc-secondary-transparent: #2f6e8e15;
+  --mwc-success: #39c23b;
+  --mwc-success-light: #69c36b;
+  --mwc-success-strong: #1aa11c;
+  --mwc-success-dim: #1aa11c4d;
+  --mwc-warning: #e0aa45;
+  --mwc-warning-light: #dfb76d;
+  --mwc-warning-strong: #ce952c;
+  --mwc-warning-dim: #ce952c4d;
+  --mwc-critical: #da4444;
+  --mwc-critical-light: #df6d6d;
+  --mwc-critical-strong: #c92c2c;
+  --mwc-critical-dim: #c92c2c4d;
+  --mwc-label: #52646c;
+  --mwc-link: var(--mwc-secondary-strong);
+  --mwc-dialog-overlay: #00000032;
+  --mwc-tile: #ebebeb;
+  --mwc-grid-disabled-background: #e6e8ea80;
+  --mwc-grid-selected-background: #e3f0f8;
+  --mwc-grid-selected-border: #abc4e9;
+  --mwc-grid-selected-disabled-background: #d5e3f0;
+  --mwc-ghost-hint: #a5c2e4dd;
+  --mwc-highlight: #00ff0066;
+  --mwc-maia-foreground: #838ed5;
+  --mwc-maia-foreground-hover: #666fa5;
+  --mwc-maia-background: #838ed523;
+  --mwc-maia-background-hover: #838ed544;
+  /* 强调色（原版亮暗一致，一次定义） */
+  --mwc-alternative-color-0: rgb(246, 232, 208);
+  --mwc-alternative-color-1: rgb(224, 247, 255);
+  --mwc-alternative-color-2: rgb(237, 227, 255);
+  --mwc-alternative-color-3: rgb(246, 215, 208);
+  --mwc-alternative-color-4: rgb(197, 223, 250);
+  --mwc-alternative-color-5: rgb(219, 255, 244);
+  --mwc-alternative-color-6: rgb(243, 245, 203);
+  --mwc-alternative-color-7: rgb(229, 243, 191);
+  --mwc-alternative-color-8: rgb(212, 210, 240);
+  --mwc-alternative-color-9: rgb(180, 223, 237);
+  --mwc-alternative-color-10: rgb(206, 240, 239);
+  --mwc-alternative-color-11: rgb(201, 240, 218);
+  --mwc-alternative-color-12: rgb(232, 222, 186);
+  --mwc-alternative-color-13: rgb(233, 207, 191);
+  --mwc-alternative-color-14: rgb(246, 223, 250);
+  --mwc-alternative-color-15: rgb(220, 226, 249);
+  --mwc-alternative-color-16: rgb(215, 243, 250);
+  --mwc-alternative-color-17: rgb(217, 240, 199);
+  --mwc-alternative-color-18: rgb(236, 241, 204);
+  --mwc-alternative-color-19: rgb(241, 230, 204);
+}
+
+/* ===== 暗色主题（Monitor dark contrast，issue #33） =====
+   值提取自 Monitor WebClient dx_theme_material_blue_dark_contrast css；
+   模块色（--mwc-module-*）与 alternative-color 系列亮暗一致（原版不覆盖），
+   由 body.monitor-dark-contrast 切换（layout 内联脚本防首屏闪烁 + pill 点击切换） */
+body.monitor-dark-contrast {
+  --background: #1f1f1f;
+  --foreground: #f1f3f3;
+  --mwc-text: #f1f3f3;
+  --mwc-text-strong: #ffffff;
+  --mwc-text-light: #bac1c4;
+  --mwc-text-dim: #f1f2f34d;
+  --mwc-text-inverted: #2a2f32;
+  --mwc-text-inverted-strong: #3c3e3e;
+  --mwc-text-inverted-light: #383f42;
+  --mwc-text-inverted-dim: #2a2f327f;
+  --mwc-lighter: #1f1f1f;
+  --mwc-lighter-light: #2e2e2e;
+  --mwc-lighter-strong: #3d3d3d;
+  --mwc-lighter-dim: #1f1f1f7f;
+  --mwc-lighter-transparent: #1f1f1f15;
+  --mwc-stronger: #404040;
+  --mwc-stronger-light: #262626;
+  --mwc-stronger-strong: #595959;
+  --mwc-stronger-dim: #4040407f;
+  --mwc-stronger-transparent: #40404015;
+  --mwc-border: #525253;
+  --mwc-border-strong: #656568;
+  --mwc-border-light: #444446;
+  --mwc-primary: #5dc0f0;
+  --mwc-primary-light: #8bd1f5;
+  --mwc-primary-strong: #7bbadb;
+  --mwc-primary-dim: #0099e633;
+  --mwc-primary-transparent: #0099e615;
+  --mwc-secondary: #7097aa;
+  --mwc-secondary-light: #6092a8;
+  --mwc-secondary-strong: #8cbbd3;
+  --mwc-secondary-dim: #6a98af7f;
+  --mwc-secondary-transparent: #333a40;
+  --mwc-success: #1aa11c;
+  --mwc-success-light: #3c8a3d;
+  --mwc-success-strong: #27e16a;
+  --mwc-success-dim: #1aa11c81;
+  --mwc-warning: #ce952c;
+  --mwc-warning-light: #bc974f;
+  --mwc-warning-strong: #eea826;
+  --mwc-warning-dim: #ce952c80;
+  --mwc-critical: #c92c2c;
+  --mwc-critical-light: #ad4242;
+  --mwc-critical-strong: #f01717;
+  --mwc-critical-dim: #c92c2c7c;
+  --mwc-label: #aeb5bc;
+  --mwc-shadow-light: rgba(0, 0, 0, 0.12);
+  --mwc-shadow-strong: rgba(0, 0, 0, 0.22);
+  --mwc-dialog-overlay: #88888832;
+  --mwc-tile: #434343;
+  --mwc-button-border: var(--mwc-secondary-strong);
+  --mwc-border-dim: var(--mwc-text-inverted-strong);
+  --mwc-link: var(--mwc-secondary-strong);
+  --mwc-grid-disabled-background: #3d3e4180;
+  --mwc-grid-selected-background: #313c4d;
+  --mwc-grid-selected-border: #0070a8;
+  --mwc-grid-selected-disabled-background: #3b4c63;
+  --mwc-ghost-hint: #5794dbdd;
+  --mwc-highlight: #76f1248a;
+  --mwc-maia-foreground: #838ed5;
+  --mwc-maia-foreground-hover: #b3bdff;
+  --mwc-maia-background: #838ed52c;
+  --mwc-maia-background-hover: #838ed560;
+}
+
+/* 暗色下侧边菜单文字改主题文字色（原版 webclient_theme_blue_dark_contrast 覆盖规则
+   a{color:var(--mwc-text)}；亮色默认 --mwc-text-inverted 白字，暗色下换浅色文字） */
+body.monitor-dark-contrast .monitor-side-menu .sub-menu-container ul li ul li a,
+body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
+  color: var(--mwc-text);
 }
 
 /* 整体框架：flex 行，导轨固定宽，内容区占满 */

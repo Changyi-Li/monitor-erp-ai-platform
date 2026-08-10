@@ -13,7 +13,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body>
+      <body suppressHydrationWarning>
+        {/* 主题防闪烁（issue #33）：React 挂载前应用持久化主题 class，
+            避免刷新时先亮后暗一闪；key 与 monitor-frame 的 applyTheme 共用 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(localStorage.getItem('monitor-theme')==='blue.dark.contrast'){document.body.classList.add('monitor-dark-contrast')}}catch(e){}})();`,
+          }}
+        />
         <AuthProvider>
           {/* Monitor 主框架（issue #31）：登录/注册页在组件内按路径退化为纯内容渲染 */}
           <MonitorFrame>{children}</MonitorFrame>

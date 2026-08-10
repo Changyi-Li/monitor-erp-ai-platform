@@ -55,6 +55,29 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     setBackgroundImage(getBackgroundImage());
   }, [pathname]);
 
+  // 主题切换（issue #33）：body class 在亮/暗主题间切换（原版 themeService.applyTheme
+  // 语义 blue.light.contrast ↔ blue.dark.contrast），localStorage 记忆，刷新后保持；
+  // 首帧 class 由 layout.tsx 内联脚本预置（防闪烁），此处与之一致后同步状态
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const saved = localStorage.getItem('monitor-theme');
+    const dark = saved === 'blue.dark.contrast';
+    applyTheme(dark);
+    setIsDark(dark);
+  }, []);
+
+  function applyTheme(dark: boolean) {
+    document.body.classList.remove('monitor-light-contrast', 'monitor-dark-contrast');
+    document.body.classList.add(dark ? 'monitor-dark-contrast' : 'monitor-light-contrast');
+    localStorage.setItem('monitor-theme', dark ? 'blue.dark.contrast' : 'blue.light.contrast');
+  }
+
+  function handleThemeToggle() {
+    const next = !isDark;
+    applyTheme(next);
+    setIsDark(next);
+  }
+
   // 未登录访问受保护页面 → 直接跳登录页（刷新后登录态丢失的场景），
   // 不在主界面停留显示欢迎词；认证页自身不跳转（避免死循环）
   useEffect(() => {
@@ -134,12 +157,18 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
             </div>
           ))}
         </div>
-        {/* 主题切换 pill（外观；交互由 #33 实现） */}
+        {/* 主题切换 pill（issue #33：点击切换亮/暗主题；isActive 滑块右移 + 实心月图标，
+            原版 app-theme-switch 行为；localStorage 持久化见上方 applyTheme） */}
         <div className="theme-switch-container">
-          <div className="theme-pill-outer" data-testid="theme-pill" title="切换主题">
+          <div
+            className={`theme-pill-outer${isDark ? ' isActive' : ''}`}
+            data-testid="theme-pill"
+            title="切换主题"
+            onClick={handleThemeToggle}
+          >
             <div className="theme-pill-background" />
             <div className="theme-pill-indicator">
-              <i className="g5icon icon-toggle-night-o" />
+              <i className={`g5icon ${isDark ? 'icon-toggle-night' : 'icon-toggle-night-o'}`} />
             </div>
           </div>
         </div>
