@@ -152,6 +152,16 @@ a {
   --mwc-shadow-strong: rgba(0, 0, 0, 0.18);
   --mwc-font-size-normal: 12px;
   --mwc-padding-large: 16px;
+  /* widget 桌面（原版 mwc-widget-wrapper 依赖） */
+  --mwc-border-radius-normal: 6px;
+  --mwc-border-radius-small: 4px;
+  --mwc-padding-normal: 8px;
+  --mwc-padding-tiny: 2px;
+  --mwc-padding-small: 6px;
+  --mwc-title-size: 16px;
+  --mwc-gap-normal: 4px;
+  --mwc-icon-large: 20px;
+  --mwc-title: var(--mwc-primary);
 }
 
 /* 整体框架：flex 行，导轨固定宽，内容区占满 */
@@ -435,6 +445,15 @@ a {
   background-color: var(--main-module-color, var(--mwc-primary));
   flex-shrink: 0;
 }
+/* 模块无程序时的空态提示（#32：内容为空的结构照抄） */
+.monitor-side-menu .sub-menu-container .menu-empty {
+  color: var(--mwc-text-inverted);
+  opacity: 0.5;
+  font-size: var(--mwc-font-size-normal);
+  margin: 0;
+  padding: 0 10px;
+  text-transform: none;
+}
 
 /* ===== 3. 顶部工具栏（mat-toolbar.toolbar） ===== */
 .monitor-toolbar {
@@ -549,17 +568,25 @@ a {
   min-width: 0;
 }
 .monitor-content .background-fade {
+  /* 原版 app-home .background-fade：渐变从工具栏下方（63px）开始，右侧 -1px 防缝隙。
+     终点 200% 是原版刻意设计：渐变线为元素高度的 2 倍，元素只占前一半，
+     整个内容区图片可见度 0%–50%（平均 ~25%）——数学上等效登录页 #646152b3 遮罩的
+     30% 可见度，因此无遮罩也能与登录页透明度/灰度观感一致 */
   background: linear-gradient(180deg, var(--mwc-lighter) 0%, transparent 200%);
   position: absolute;
-  inset: 0;
+  top: 63px;
+  left: 0;
+  right: -1px;
+  height: 100%;
   pointer-events: none;
 }
 .monitor-content .background {
+  /* 背景图由组件挂载时随机注入（原版 login/01-10.jpg，见 monitor-frame.tsx） */
   position: absolute;
   inset: 0;
-  background-image: url('/images/login/07.jpg');
   background-size: cover;
-  background-position: center;
+  background-position: center center;
+  background-repeat: no-repeat;
   pointer-events: none;
 }
 .monitor-content .monitor-main {
@@ -568,4 +595,94 @@ a {
   overflow-y: auto;
   padding: 24px;
   z-index: 1;
+}
+
+/* ===== 起始页 widget 桌面（原版 .start-page-view + mwc-widget-wrapper） ===== */
+.monitor-start-page {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-auto-rows: min-content;
+  gap: var(--mwc-gap-normal);
+  align-content: start;
+}
+.monitor-widget {
+  grid-column: span 2;
+  min-height: 132px;
+  margin: var(--mwc-padding-normal);
+  border-radius: var(--mwc-border-radius-normal);
+  box-shadow: 0 3px 7px #0000001f, 0 10px 20px var(--mwc-shadow-light);
+  outline-width: 1px;
+  outline-style: solid;
+  outline-color: var(--mwc-shadow-light);
+  background-color: var(--mwc-lighter-light);
+  opacity: 0.85;
+  transition: ease-in-out all 0.1s;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: var(--mwc-padding-tiny) var(--mwc-padding-small) var(--mwc-padding-small);
+  text-decoration: none;
+  color: inherit;
+}
+.monitor-widget:hover {
+  opacity: 1;
+  box-shadow: 0 3px 7px #0000002e, 0 10px 20px var(--mwc-shadow-light);
+}
+.monitor-widget .widget-toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--mwc-padding-tiny);
+  padding: var(--mwc-gap-normal) 0;
+}
+.monitor-widget .widget-left-toolbar {
+  display: flex;
+  gap: var(--mwc-gap-normal);
+  flex-grow: 1;
+  flex-shrink: 1;
+  overflow: hidden;
+  align-items: center;
+}
+.monitor-widget .widget-title {
+  font-size: var(--mwc-title-size);
+  margin: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mwc-secondary);
+}
+.monitor-widget .widget-icon {
+  font-size: var(--mwc-title-size);
+  height: var(--mwc-icon-large);
+  width: var(--mwc-icon-large);
+  margin-right: 0.25rem;
+  color: var(--mwc-secondary);
+  transition: ease-in-out all 0.1s;
+}
+.monitor-widget .widget-right-toolbar {
+  transition: ease-in-out all 0.1s;
+  opacity: 0;
+}
+.monitor-widget:hover .widget-right-toolbar {
+  opacity: 1;
+}
+.monitor-widget:hover .widget-title,
+.monitor-widget:hover .widget-icon {
+  color: var(--mwc-title);
+}
+.monitor-widget .widget-content {
+  display: flex;
+  gap: var(--mwc-gap-normal);
+  flex-direction: column;
+  flex-grow: 1;
+  font-size: var(--mwc-font-size-normal);
+  color: var(--mwc-text);
+}
+.monitor-widget .widget-content .widget-desc {
+  margin: 0;
+  color: var(--mwc-text-light);
+  line-height: 1.5;
 }
