@@ -34,11 +34,13 @@ export const CreateUserResponseSchema = z.object({
 export type CreateUserResponse = z.output<typeof CreateUserResponseSchema>;
 
 /**
- * 超管更新用户资料（#37）：PATCH 语义，当前仅 description；
- * null 表示清空描述（DB 列可空）。
+ * 超管更新用户资料（#37/#38）：PATCH 部分语义，字段均可选——
+ * description（null 清空，DB 列可空）+ role（平台角色互改，仅可赋值
+ * super_admin/internal；customer 走邀请流程不可在此赋值，且不能改自己的角色）。
  */
 export const UpdateUserRequestSchema = z.object({
-  description: z.string().max(35).nullable(),
+  description: z.string().max(35).nullable().optional(),
+  role: z.enum(['super_admin', 'internal']).optional(),
 });
 export type UpdateUserRequest = z.output<typeof UpdateUserRequestSchema>;
 

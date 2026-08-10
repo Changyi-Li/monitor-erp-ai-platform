@@ -298,8 +298,10 @@ export class AuthService {
   }
 
   /**
-   * 超管更新用户资料（#37，@Roles(super_admin) 守卫）：当前仅 description
-   * （角色/权限变更 #38，密码重置 #39）。先查后更，未命中 404（防探测语义同客户）。
+   * 超管更新用户资料（#37/#38，@Roles(super_admin) 守卫）：description + role。
+   * 防护（#38，用户已拍板）：不能修改自己的角色（防最后一名超管把自己降级锁死平台）；
+   * customer 角色不可在此修改（客户账号走项目邀请创建）。
+   * 先查后更，未命中 404（防探测语义同客户）。
    */
   async updateUser(
     userId: string,
@@ -307,7 +309,7 @@ export class AuthService {
     actor: AuthUser,
   ): Promise<UpdateUserResponse> {
     const [existing] = await this.db
-      .select({ id: users.id })
+      .select({ id: users.id, role: users.role })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -315,9 +317,23 @@ export class AuthService {
       throw new NotFoundException('用户不存在');
     }
 
+    if (input.role !== undefined) {
+      if (actor.sub === userId) {
+        throw new ConflictException('不能修改自己的角色');
+      }
+      if (existing.role === 'customer') {
+        throw new ConflictException('客户角色不可在此修改');
+      }
+    }
+
     const [updated] = await this.db
       .update(users)
-      .set({ description: input.description, updatedAt: new Date() })
+      .set({
+        // drizzle 对 undefined 字段不生成 SET 子句 → 天然 PATCH 部分语义
+        ...(input.description !== undefined && { description: input.description }),
+        ...(input.role !== undefined && { role: input.role }),
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId))
       .returning();
     if (!updated) {
@@ -329,7 +345,10 @@ export class AuthService {
       actorRole: actor.role,
       resourceType: 'user',
       resourceId: userId,
-      metadata: { description: input.description },
+      metadata: {
+        ...(input.role !== undefined && { role: input.role }),
+        ...(input.description !== undefined && { description: input.description }),
+      },
     });
     return { user: { ...toUserDto(updated), isActive: updated.isActive } };
   }

@@ -705,6 +705,152 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       }
     });
 
+    // #38：角色页签后端 —— 超管改平台角色持久化 + 权限实际生效（新登录 token 携带新角色声明）
+    it('PATCH /api/users/:id 角色：internal→super_admin 持久化，新登录 token 权限生效；改回 internal 列表可见', async () => {
+      // 目标用户：前序用例创建的 created@corp.test（describe 顺序依赖）
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const target = list
+        .json()
+        .users.find((u: { email: string }) => u.email === 'created@corp.test');
+      expect(target).toBeTruthy();
+
+      // 内部用户 → super_admin
+      const promote = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { role: 'super_admin' },
+      });
+      expect(promote.statusCode).toBe(200);
+      expect(UpdateUserResponseSchema.safeParse(promote.json()).success).toBe(true);
+      expect(promote.json().user.role).toBe('super_admin');
+
+      // 权限变化断言：新登录 JWT 携带 super_admin 声明（me 从 DB 重查 + RolesGuard 校验）
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'created@corp.test', password: 'NewPass123' },
+      });
+      expect(login.statusCode).toBe(200);
+      const promotedToken = (login.json() as { accessToken: string }).accessToken;
+      const me = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { authorization: `Bearer ${promotedToken}` },
+      });
+      expect((me.json() as { user: { role: string } }).user.role).toBe('super_admin');
+
+      // 新 token 能执行超管专属 PATCH（权限真实生效，非仅声明）
+      const canPatch = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${promotedToken}` },
+        payload: { description: '提升后由本人写入占位' },
+      });
+      expect(canPatch.statusCode).toBe(200);
+
+      // 改回 internal → 200 + 列表持久化可见
+      const demote = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { role: 'internal' },
+      });
+      expect(demote.statusCode).toBe(200);
+      expect(demote.json().user.role).toBe('internal');
+      const relist = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      expect(
+        relist.json().users.find((u: { id: string }) => u.id === target.id)?.role,
+      ).toBe('internal');
+    });
+
+    // #38：角色防护矩阵 —— 非法角色 400 / internal 与客户 403 / 自己 409 / customer 目标 409
+    it('PATCH 角色防护：非法角色 400；internal/客户 403；自己 409；customer 目标 409', async () => {
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const users = (
+        list.json() as { users: { id: string; email: string; role: string }[] }
+      ).users;
+      const target = users.find((u) => u.email === 'created@corp.test');
+      const adminUser = users.find((u) => u.email === 'admin@corp.test');
+      const pmUser = users.find((u) => u.email === 'pm@a.test');
+      expect(target).toBeTruthy();
+      expect(adminUser).toBeTruthy();
+      expect(pmUser).toBeTruthy();
+
+      // 非法角色（customer 不可在此赋值）→ 400
+      const badRole = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { role: 'customer' },
+      });
+      expect(badRole.statusCode).toBe(400);
+
+      // internal 改角色 → 403（方法级 @Roles 覆盖类级）
+      const deniedInternal = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${internalToken}` },
+        payload: { role: 'super_admin' },
+      });
+      expect(deniedInternal.statusCode).toBe(403);
+
+      // 客户改角色 → 403
+      const deniedCustomer = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { role: 'super_admin' },
+      });
+      expect(deniedCustomer.statusCode).toBe(403);
+
+      // 自己改自己 → 409（防最后一名超管降级锁死平台）
+      const selfChange = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${adminUser.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { role: 'internal' },
+      });
+      expect(selfChange.statusCode).toBe(409);
+
+      // customer 目标改角色 → 409（客户账号走邀请流程创建，不可在此改角色）
+      const customerTarget = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${pmUser.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { role: 'super_admin' },
+      });
+      expect(customerTarget.statusCode).toBe(409);
+    });
+
+    // #38：角色变更落审计 user.update（metadata 含 role 字段）
+    it('改角色落审计 user.update（metadata 含 role）', async () => {
+      const owner = connectOwner();
+      try {
+        const rows = await owner`
+          select action, actor_role, metadata
+          from audit_logs where action = 'user.update' order by created_at desc limit 1`;
+        expect(rows.length).toBe(1);
+        expect(rows[0].actor_role).toBe('super_admin');
+        const metadata = JSON.parse(rows[0].metadata as string) as Record<string, unknown>;
+        expect(metadata.role).toBe('internal'); // 最新一条 = 改回 internal 的角色变更
+      } finally {
+        await owner.end();
+      }
+    });
+
     // #14：列表放开给客户角色（RLS 过滤 → 只见所属客户，只读）；编辑 PATCH 仍 403
     it('GET /api/customers：内部 200 全量；客户 200 但只见所属（RLS 过滤）', async () => {
       const ok = await app.inject({
