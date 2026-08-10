@@ -39,6 +39,9 @@ function filterCategories(
  *
  * 模块切换（#32）：菜单数据来自 ../data/monitor-menu.ts（模块 → 分类 → 程序项，
  * 平台功能分门别类）；点击模块高亮并联动侧边菜单，再点当前模块取消选中回默认视图。
+ * 模块路由感知（#36）：进入页面自动激活所属模块（数据驱动反查菜单，如 /users → basicdata），
+ * 类名 active + 实心图标 + 竖线变粗；侧边菜单保持收起（原版 app-navigation-menu 行为），
+ * 点击模块才展开，与点击行为共用同一选中态。
  * 「查找程序」实时过滤由 #35 实现；顶栏 Monitor 搜索（#34 实现）暂隐藏；主题切换 #33。
  *
  * 登录/注册页为全屏认证布局（issue #29），此框架不渲染（与旧 Topbar 行为一致）。
@@ -181,6 +184,26 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     router.push('/login');
   }
 
+  // 路由 → 模块反查（issue #36）：遍历模块菜单数据，当前路径命中的程序项所属模块
+  // 即为 active 模块。数据驱动，新增页面无需硬编码映射（/ → 默认视图，无模块）
+  const routeModuleKey = useMemo(() => {
+    for (const m of monitorModules) {
+      for (const cat of m.categories) {
+        if (cat.items.some((i) => i.href === pathname)) return m.key;
+      }
+    }
+    return null;
+  }, [pathname]);
+
+  // 路由感知激活（issue #36）：进入页面自动选中所属模块（原版 app-navigation-menu
+  // 行为：模块 active 但侧边菜单保持收起，菜单需手动点模块展开）。仅当路由变化时
+  // 触发——用户手动收起（点 active 模块）后保持收起，刷新页面重新激活
+  useEffect(() => {
+    if (routeModuleKey) {
+      setSelectedModuleKey(routeModuleKey);
+    }
+  }, [routeModuleKey]);
+
   const selectedModule =
     monitorModules.find((m) => m.key === selectedModuleKey) ?? null;
 
@@ -200,8 +223,8 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
 
   function handleModuleClick(m: MonitorModule) {
     if (selectedModuleKey === m.key) {
-      // 再点当前模块 → 收起菜单并取消选中（回默认视图；原版 toggleSidebar 的 toggle 分支）
-      setSelectedModuleKey(null);
+      // 再点当前模块 → 仅收起菜单（原版 toggleSidebar 的 toggle 分支）。
+      // 注意：不取消选中——active 由路由决定（#36），页面还在该模块下，收起≠失活
       setMenuOpen(false);
     } else {
       // 点其他模块 → 选中并展开菜单（原版 toggleSidebar 的 open 分支）
@@ -226,13 +249,16 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
           {monitorModules.map((m) => (
             <div
               key={m.key}
-              className={`module ${m.key}${selectedModuleKey === m.key ? ' selected' : ''}`}
+              className={`module ${m.key}${selectedModuleKey === m.key ? ' active' : ''}`}
               style={{ '--module-color': m.color } as CSSProperties}
               title={m.title}
               data-testid="module"
               onClick={() => handleModuleClick(m)}
             >
-              <span className={`g5icon icon-module-${m.key}-o`} />
+              {/* active 模块用实心图标（原版：icon-module-<key> 无 -o 后缀） */}
+              <span
+                className={`g5icon icon-module-${m.key}${selectedModuleKey === m.key ? '' : '-o'}`}
+              />
             </div>
           ))}
         </div>

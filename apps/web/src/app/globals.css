@@ -354,7 +354,8 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   align-items: center;
 }
 
-/* 模块项：50×59，左竖条 5px 模块色，选中渐变填充（原版 .module） */
+/* 模块项：50×59，左竖条 5px 模块色，选中渐变填充（原版 .module）；
+   active = 路由/点击选中的模块（issue #36，类名对齐原版 .module.active） */
 .monitor-module-rail .module {
   opacity: 0.6;
   margin-top: 4px;
@@ -375,18 +376,14 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   margin-left: 10px;
 }
 .monitor-module-rail .module .g5icon:before { margin: 0; }
-.monitor-module-rail .module:hover { opacity: 0.9; border-width: 10px; }
-.monitor-module-rail .module.selected {
-  opacity: 1;
+/* active 与 hover 同形态（issue #36 用户要求）：opacity 0.9 + 竖线 10px，无渐变填充 */
+.monitor-module-rail .module:hover,
+.monitor-module-rail .module.active {
+  opacity: 0.9;
   border-width: 10px;
-  background-size: 100% 100%;
-  background-image: linear-gradient(
-    var(--module-color, var(--mwc-primary)),
-    var(--module-color, var(--mwc-primary))
-  );
 }
-.monitor-module-rail .module.selected:hover { border-width: 15px; }
-.monitor-module-rail .module.selected:active { border-width: 20px; }
+.monitor-module-rail .module.active:hover { border-width: 15px; }
+.monitor-module-rail .module.active:active { border-width: 20px; }
 
 /* 主题切换 pill（外观；交互由 #33 实现） */
 .monitor-module-rail .theme-switch-container {
