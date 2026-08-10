@@ -47,3 +47,13 @@ a {
     color-scheme: dark;
   }
 }
+
+/* Monitor 风格认证表单：聚焦时下划线点亮（深色背景登录/注册页，issue #29） */
+.auth-input:focus {
+  border-bottom-color: #ffffff;
+}
+
+/* Monitor 原版 mwc-button hover：半透明白加深（#f7f7f780） */
+.auth-submit:hover:not(:disabled) {
+  background: rgba(247, 247, 247, 0.5);
+}

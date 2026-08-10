@@ -3,15 +3,14 @@
 import { RegisterResponseSchema } from '@monitor/contracts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AuthForm } from '../../components/auth-form';
-import { apiFetch } from '../../lib/api';
+import { AuthForm } from '../../../components/auth-form';
+import { apiFetch } from '../../../lib/api';
 
 export default function RegisterPage() {
   const router = useRouter();
 
   return (
-    <div style={{ maxWidth: 420 }}>
-      <h1>注册</h1>
+    <div style={{ width: '100%' }}>
       <AuthForm
         mode="register"
         submitLabel="注册"
@@ -26,8 +25,13 @@ export default function RegisterPage() {
           router.push('/login');
         }}
       />
-      <p style={{ marginTop: 16 }}>
-        已有账号？<Link href="/login">登录</Link>
+      <p style={{ marginTop: 24, textAlign: 'center' }}>
+        <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 14 }}>
+          已有账号？
+        </span>{' '}
+        <Link href="/login" style={{ color: '#ffffff', fontWeight: 600 }}>
+          登录
+        </Link>
       </p>
     </div>
   );

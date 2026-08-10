@@ -1,17 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { isPlatformRole, userRoleLabel } from '../lib/roles';
 import { useAuth } from './auth-provider';
 
 /**
  * 顶部导航：登录态显示角色菜单（项目=全部登录用户；用户管理=内部/超管，demo path：
  * 菜单与按钮按权限显示/隐藏）+ 当前用户 + 登出；未登录显示登录/注册链接。
+ * 登录/注册页为全屏认证布局，不渲染顶栏（样式需求，issue #29）。
  */
 export function Topbar() {
   const { user, status, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
+  // 认证页全屏展示，隐藏顶栏
+  if (pathname === '/login' || pathname === '/register') return null;
 
   async function handleLogout() {
     await logout();

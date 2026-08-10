@@ -3,18 +3,17 @@
 import { LoginResponseSchema } from '@monitor/contracts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AuthForm } from '../../components/auth-form';
-import { useAuth } from '../../components/auth-provider';
-import { apiFetch } from '../../lib/api';
-import { saveTokens } from '../../lib/token-store';
+import { AuthForm } from '../../../components/auth-form';
+import { useAuth } from '../../../components/auth-provider';
+import { apiFetch } from '../../../lib/api';
+import { saveTokens } from '../../../lib/token-store';
 
 export default function LoginPage() {
   const router = useRouter();
   const { refresh } = useAuth();
 
   return (
-    <div style={{ maxWidth: 420 }}>
-      <h1>登录</h1>
+    <div style={{ width: '100%' }}>
       <AuthForm
         mode="login"
         submitLabel="登录"
@@ -30,8 +29,13 @@ export default function LoginPage() {
           router.push('/');
         }}
       />
-      <p style={{ marginTop: 16 }}>
-        还没有账号？<Link href="/register">注册</Link>
+      <p style={{ marginTop: 24, textAlign: 'center' }}>
+        <span style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 14 }}>
+          还没有账号？
+        </span>{' '}
+        <Link href="/register" style={{ color: '#ffffff', fontWeight: 600 }}>
+          注册
+        </Link>
       </p>
     </div>
   );
