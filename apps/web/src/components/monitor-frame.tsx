@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ReactNode } from 'react';
+import type { UserRole } from '@monitor/shared';
 import { getBackgroundImage } from '../lib/background-image';
 import { isPlatformRole, userRoleLabel } from '../lib/roles';
 import { useAuth } from './auth-provider';
@@ -11,8 +12,22 @@ import {
   homeCategories,
   monitorModules,
   type MonitorMenuCategory,
+  type MonitorMenuItem,
   type MonitorModule,
 } from '../data/monitor-menu';
+
+/** 平台角色专属入口（非平台角色隐藏；与侧边菜单同一过滤规则，供搜索下拉复用） */
+const PLATFORM_HREFS = new Set(['/users', '/agent', '/usage']);
+
+function filterCategories(
+  categories: MonitorMenuCategory[],
+  role: UserRole | undefined,
+): MonitorMenuCategory[] {
+  if (isPlatformRole(role)) return categories;
+  return categories
+    .map((cat) => ({ ...cat, items: cat.items.filter((i) => !PLATFORM_HREFS.has(i.href)) }))
+    .filter((cat) => cat.items.length > 0);
+}
 
 /**
  * Monitor ERP 主框架（issue #31 + #32）：登录后页面套上 Monitor 主界面三区布局
@@ -78,6 +93,78 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     setIsDark(next);
   }
 
+  // 顶栏功能（issue #34）：工具栏 Monitor 搜索框与侧边菜单「查找程序」联动（同一关键字），
+  // Ctrl+F 聚焦工具栏搜索框（浏览器默认查找被拦截）
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'Escape') {
+        setProcedureQuery('');
+        searchInputRef.current?.blur();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // 全局搜索下拉：跨全部模块/首页分类（角色过滤后），caption 包含关键字即命中，按 href 去重，
+  // 最多显示 20 条。输入即出结果，不依赖侧边菜单展开（用户要求：不点开菜单也能看到页面）。
+  // 条目带所属模块色（homeCategories 无模块归属 → 默认主色），下拉左侧竖线与模块导轨同色
+  const searchResults = useMemo(() => {
+    const q = procedureQuery.trim().toLowerCase();
+    if (!q) return [];
+    const seen = new Set<string>();
+    const results: { caption: string; href: string; group: string; color?: string }[] = [];
+    const push = (item: MonitorMenuItem, cat: MonitorMenuCategory, color?: string) => {
+      if (!item.caption.toLowerCase().includes(q) || seen.has(item.href)) return;
+      seen.add(item.href);
+      results.push({ caption: item.caption, href: item.href, group: cat.label, color });
+    };
+    // 模块优先（带模块色）：同一页面在首页分类与模块分类里重复出现时，
+    // 取模块主色（如「客户」= 销售绿，而非首页「最近」的无色条目）
+    for (const m of monitorModules) {
+      for (const cat of filterCategories(m.categories, user?.role)) {
+        for (const item of cat.items) push(item, cat, m.color);
+      }
+    }
+    // 首页分类兜底：仅补模块里没有的条目（当前数据全部有归属，此分支为未来扩展留位）
+    for (const cat of filterCategories(homeCategories, user?.role)) {
+      for (const item of cat.items) push(item, cat);
+    }
+    return results.slice(0, 20);
+  }, [procedureQuery, user?.role]);
+
+  // 搜索下拉：点击面板外收起（清空关键字，输入框同步失焦）
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!searchResults.length) return;
+    function onDocClick(e: MouseEvent) {
+      if (!searchWrapRef.current?.contains(e.target as Node)) {
+        setProcedureQuery('');
+        searchInputRef.current?.blur();
+      }
+    }
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [searchResults.length]);
+
+  // 用户菜单（issue #34）：徽标点击展开（icon 空心/实心切换，原版 toggleUserIcon），
+  // 点击菜单外任意处收起
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest('.user-menu-wrapper')) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [userMenuOpen]);
+
   // 未登录访问受保护页面 → 直接跳登录页（刷新后登录态丢失的场景），
   // 不在主界面停留显示欢迎词；认证页自身不跳转（避免死循环）
   useEffect(() => {
@@ -97,17 +184,9 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   const selectedModule =
     monitorModules.find((m) => m.key === selectedModuleKey) ?? null;
 
-  // 平台角色过滤：非平台角色隐藏 用户管理/AI 客服/用量统计 等内部入口
-  const platformHrefs = new Set(['/users', '/agent', '/usage']);
-  function filterCategories(categories: MonitorMenuCategory[]): MonitorMenuCategory[] {
-    if (isPlatformRole(user?.role)) return categories;
-    return categories
-      .map((cat) => ({ ...cat, items: cat.items.filter((i) => !platformHrefs.has(i.href)) }))
-      .filter((cat) => cat.items.length > 0);
-  }
-
   const visibleCategories = filterCategories(
     selectedModule ? selectedModule.categories : homeCategories,
+    user?.role,
   )
     // issue #35：按「查找程序」关键字实时过滤程序项（中文/英文、大小写不敏感），
     // 无匹配程序项的分类自动隐藏
@@ -251,8 +330,45 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
                 <span className="g5icon icon-toggle-home-o" />
               </button>
             </div>
-            {/* Monitor 搜索 (Ctrl + F) 暂隐藏：功能属 T5 #34，先移除避免用户在未实现
-                的搜索框里输入造成误解（样式 .monitor-toolbar .search-container 保留，#34 恢复） */}
+            {/* Monitor 搜索（issue #34 + 用户要求）：Ctrl+F 聚焦；输入即出全局搜索下拉
+                （跨模块命中页面，点击跳转，不依赖侧边菜单）；关键字同时联动侧边菜单
+                「查找程序」过滤（同一 procedureQuery，两种入口行为一致） */}
+            <div className="search-container">
+              <div className="monitor-search-wrapper" ref={searchWrapRef}>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className="search-input"
+                  placeholder="Monitor 搜索 (Ctrl + F)"
+                  value={procedureQuery}
+                  onChange={(e) => setProcedureQuery(e.target.value)}
+                />
+                {searchResults.length > 0 && (
+                  <div className="monitor-search-dropdown" data-testid="search-dropdown">
+                    {searchResults.map((r) => (
+                      <button
+                        key={r.href}
+                        type="button"
+                        className="monitor-search-item"
+                        style={{ '--module-color': r.color } as CSSProperties}
+                        onClick={() => {
+                          setProcedureQuery('');
+                          searchInputRef.current?.blur();
+                          router.push(r.href);
+                        }}
+                      >
+                        <span className="monitor-search-bracket" />
+                        <span className="monitor-search-caption">{r.caption}</span>
+                        <span className="monitor-search-group">{r.group}</span>
+                      </button>
+                    ))}
+                    {searchResults.length === 20 && (
+                      <div className="monitor-search-more">更多结果，请输入更精确的关键字</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="user-actions">
               {status === 'loading' && <span style={{ fontSize: 12, color: 'var(--mwc-text-light)' }}>加载中…</span>}
               {status === 'authenticated' && user && (
@@ -260,9 +376,28 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
                   <span style={{ fontSize: 12, color: 'var(--mwc-text-light)' }}>
                     {user.displayName}
                   </span>
-                  <button type="button" className="user-button" onClick={handleLogout} aria-label="登出">
-                    <span className="g5icon icon-toggle-user-o" />
-                  </button>
+                  <div className="user-menu-wrapper">
+                    <button
+                      type="button"
+                      className="user-button"
+                      onClick={() => setUserMenuOpen((o) => !o)}
+                      aria-label="用户菜单"
+                    >
+                      <span className={`g5icon ${userMenuOpen ? 'icon-toggle-user' : 'icon-toggle-user-o'}`} />
+                    </button>
+                    {userMenuOpen && (
+                      <div className="user-menu" data-testid="user-menu">
+                        <div className="user-menu-header">
+                          <span className="user-menu-name">{user.displayName}</span>
+                          <span className="user-menu-role">{userRoleLabel(user.role)}</span>
+                          <span className="user-menu-email">{user.email}</span>
+                        </div>
+                        <button type="button" className="user-menu-item" onClick={handleLogout}>
+                          登出
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
               {status === 'unauthenticated' && (

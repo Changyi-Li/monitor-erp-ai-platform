@@ -686,6 +686,73 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
 .monitor-toolbar .search-container .search-input::placeholder {
   color: var(--mwc-secondary-dim);
 }
+.monitor-toolbar .search-container .search-input:focus {
+  border-bottom-color: var(--mwc-primary);
+}
+
+/* 全局搜索下拉（issue #34 + 用户要求：输入即出符合条件的页面，点击跳转，
+   不依赖侧边菜单展开；Material 菜单风格，变量驱动暗色自适应） */
+.monitor-toolbar .search-container .monitor-search-wrapper {
+  position: relative;
+  width: 100%;
+}
+.monitor-toolbar .search-container .monitor-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background-color: var(--mwc-lighter-light);
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-normal);
+  box-shadow: var(--mwc-shadow-strong);
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--mwc-padding-normal) 0;
+  z-index: 100;
+}
+.monitor-toolbar .search-container .monitor-search-item {
+  background: none;
+  border: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mwc-padding-normal);
+  padding: var(--mwc-padding-small) var(--mwc-padding-large);
+  font-size: var(--mwc-font-size-normal);
+  cursor: pointer;
+  text-align: left;
+}
+.monitor-toolbar .search-container .monitor-search-item:hover {
+  background-color: rgb(from var(--mwc-primary) r g b / 0.1);
+}
+.monitor-toolbar .search-container .monitor-search-bracket {
+  /* 模块色竖线（与导轨选中竖条/侧边菜单 module-bracket 同款）：--module-color 由
+     搜索项注入（模块主色；首页分类无归属 → 默认主色） */
+  width: 4px;
+  height: 14px;
+  margin-right: var(--mwc-padding-normal);
+  border-radius: 1px;
+  background-color: var(--module-color, var(--mwc-primary));
+  flex-shrink: 0;
+}
+.monitor-toolbar .search-container .monitor-search-caption {
+  color: var(--mwc-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.monitor-toolbar .search-container .monitor-search-group {
+  color: var(--mwc-text-light);
+  flex-shrink: 0;
+}
+.monitor-toolbar .search-container .monitor-search-more {
+  padding: var(--mwc-padding-small) var(--mwc-padding-large);
+  color: var(--mwc-text-light);
+  font-size: var(--mwc-font-size-normal);
+}
 
 /* 用户区（user-actions） */
 .monitor-toolbar .user-actions {
@@ -707,6 +774,58 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   position: relative;
 }
 .monitor-toolbar .user-actions .user-button:hover { opacity: 1; }
+
+/* 用户菜单（issue #34：原版 user 徽标点击展开，icon 空心/实心切换） */
+.monitor-toolbar .user-actions .user-menu-wrapper {
+  position: relative;
+}
+.monitor-toolbar .user-actions .user-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 200px;
+  background-color: var(--mwc-lighter-light);
+  border-radius: var(--mwc-border-radius-normal);
+  border: 1px solid var(--mwc-border);
+  box-shadow: var(--mwc-shadow-strong);
+  padding: var(--mwc-padding-normal) 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+.monitor-toolbar .user-actions .user-menu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--mwc-padding-large) var(--mwc-padding-small);
+  border-bottom: 1px solid var(--mwc-border);
+  margin-bottom: var(--mwc-padding-small);
+}
+.monitor-toolbar .user-actions .user-menu-name {
+  color: var(--mwc-text);
+  font-size: var(--mwc-font-size-normal);
+  font-weight: 600;
+}
+.monitor-toolbar .user-actions .user-menu-role {
+  color: var(--mwc-secondary);
+  font-size: var(--mwc-font-size-normal);
+}
+.monitor-toolbar .user-actions .user-menu-email {
+  color: var(--mwc-text-light);
+  font-size: var(--mwc-font-size-normal);
+}
+.monitor-toolbar .user-actions .user-menu-item {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: var(--mwc-padding-small) var(--mwc-padding-large);
+  color: var(--mwc-text);
+  font-size: var(--mwc-font-size-normal);
+  cursor: pointer;
+}
+.monitor-toolbar .user-actions .user-menu-item:hover {
+  background-color: rgb(from var(--mwc-primary) r g b / 0.1);
+}
 
 /* ===== 4. 内容区（app-home：背景图 + 渐变） ===== */
 .monitor-content {
