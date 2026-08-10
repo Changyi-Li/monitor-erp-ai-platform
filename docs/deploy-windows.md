@@ -240,23 +240,17 @@ New-NetFirewallRule -DisplayName "Monitor Web 3000" -Direction Inbound -Protocol
 
 ## 七、日常更新发版
 
-服务器上放一个 `deploy.bat`（放在仓库根目录），每次发版双击即可：
+仓库根目录自带 `deploy.bat`（NSSM 服务方式，对应 5.3 方式 A）。把文件顶部 `APP_ROOT` / `API_SERVICE` / `WEB_SERVICE` 三个变量改成实际部署值后，每次发版**双击即可**，脚本自动执行：
 
-```bat
-@echo off
-cd /d D:\apps\monitor-erp-ai-platform
-git pull
-pnpm install --frozen-lockfile
-pnpm build
-pm2 restart all
-```
+1. 检查工作区是否干净（有本地改动会中止，防止被覆盖）
+2. `git pull` 拉最新代码
+3. `pnpm install --frozen-lockfile` 安装锁定依赖
+4. `pnpm build` 全仓构建（turbo 自动按 shared → contracts → api → web 顺序，会重建 contracts 产物）
+5. 重启 `monitor-api` / `monitor-web` 服务（先停后启）
 
-如果迁移文件有变化（`pnpm db:generate` 新增过 SQL），需在 `pm2 restart all` 前加一行：
+本次更新带数据库迁移时：取消 `deploy.bat` 中 `db:migrate` 段的注释并填入 owner 凭据（迁移必须用 owner 连接，见第四节；owner 凭据用完即清，不留驻）。迁移发生在构建后、重启服务前。
 
-```bat
-set DATABASE_URL=postgres://postgres:<真实密码>@localhost:5432/monitor_erp
-pnpm db:migrate
-```
+> PM2 方式（5.1/5.2）的更新差异只有最后一步：`pm2 restart all` 即可，其余步骤相同。
 
 ---
 
