@@ -63,7 +63,11 @@ if (-not $psqlExe -or -not (Test-Path $psqlExe)) {
 
 # ---- 3. list tables in public schema ----
 Write-Host "[verify_db] Checking tables in database '$dbName'..."
-$out = & $psqlExe $dbUrl -t -A -c "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public';" 2>&1
+# NOTE: options must come BEFORE the connection string - psql treats the first
+# non-option argument as DBNAME and silently ignores everything after it
+# ("ignoring extra command-line argument" warning, query never runs).
+# --dbname= is explicit to avoid any positional ambiguity.
+$out = & $psqlExe -t -A --dbname=$dbUrl -c "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public';" 2>&1
 if ($LASTEXITCODE -ne 0) {
   Write-Host "[verify_db] FAIL: cannot connect / query database: $($out -join ' ')" -ForegroundColor Red
   exit 2
