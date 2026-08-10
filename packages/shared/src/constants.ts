@@ -102,7 +102,7 @@ export const LLM_SCENE_LABELS: Record<LlmScene, string> = {
 export const DEFAULT_ACCESS_TOKEN_TTL = '15m';
 export const DEFAULT_REFRESH_TOKEN_TTL = '30d';
 
-export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MIN_LENGTH = 6;
 export const PASSWORD_MAX_LENGTH = 128;
 
 export const APP_NAME = 'Monitor ERP AI Platform';

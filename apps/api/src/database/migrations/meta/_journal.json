@@ -113,6 +113,20 @@
       "when": 1786079332011,
       "tag": "0015_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786341532767,
+      "tag": "0016_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786344534404,
+      "tag": "0017_auth",
+      "breakpoints": true
     }
   ]
 }

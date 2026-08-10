@@ -67,6 +67,8 @@ describe('Auth API e2e', () => {
       );
       expect(status).toBe(201);
       expect(RegisterResponseSchema.safeParse(body).success).toBe(true);
+      // 描述默认昵称（#37 迭代）：register 时 description = displayName
+      expect(body.user.description).toBe('E2E User');
       userId = body.user.id;
     });
 

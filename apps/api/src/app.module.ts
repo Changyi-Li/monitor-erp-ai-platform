@@ -33,7 +33,10 @@ import { ManualModule } from './manual/manual.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      envFilePath: ['.env.test', '.env'],
+      // 仅测试环境（vitest NODE_ENV=test + setup-test-db.ts 已 override 注入
+      // process.env.DATABASE_URL=monitor_erp_test）才读 .env.test；否则只读 .env，
+      // 防止本地 pnpm start 误连测试库（e2e TRUNCATE 会清掉 dev 账号，见 #37 事故）
+      envFilePath: process.env.NODE_ENV === 'test' ? ['.env.test', '.env'] : ['.env'],
     }),
     DrizzleModule.forRoot(),
     StorageModule.forRoot(),

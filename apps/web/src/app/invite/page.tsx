@@ -60,7 +60,7 @@ function InviteForm() {
   return (
     <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 8, maxWidth: 320 }}>
       <h2>设置密码</h2>
-      <p style={{ color: '#6b7280', fontSize: 14 }}>首次登录前请设置你的密码（至少 8 位）</p>
+      <p style={{ color: '#6b7280', fontSize: 14 }}>首次登录前请设置你的密码（至少 6 位）</p>
       <input
         type="password"
         placeholder="新密码"

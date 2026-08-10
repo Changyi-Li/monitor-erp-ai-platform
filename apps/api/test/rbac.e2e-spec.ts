@@ -12,6 +12,7 @@ import {
   ProjectGetResponseSchema,
   ProjectsListResponseSchema,
   SetPasswordResponseSchema,
+  UpdateUserResponseSchema,
   UsersListResponseSchema,
 } from '@monitor/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -520,6 +521,9 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(ok.statusCode).toBe(201);
       expect(CreateUserResponseSchema.safeParse(ok.json()).success).toBe(true);
 
+      // 描述默认昵称（#37 迭代）：description 初始 = displayName，后续可编辑为不同内容
+      expect(ok.json().user.description).toBe('新建用户');
+
       // 新账号能登录（验证密码哈希与 role 生效）
       const login = await app.inject({
         method: 'POST',
@@ -555,6 +559,20 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       });
       expect(dup.statusCode).toBe(409);
 
+      // 重复昵称（不同邮箱）→ 409（display_name 唯一，#37 迭代）
+      const dupName = await app.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: {
+          email: 'dupnick@corp.test',
+          password: 'NewPass123',
+          displayName: '新建用户',
+          role: 'internal',
+        },
+      });
+      expect(dupName.statusCode).toBe(409);
+
       // 角色只能是 super_admin/internal（customer 被契约拒绝）→ 400
       const badRole = await app.inject({
         method: 'POST',
@@ -571,6 +589,112 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         const rows = await owner`
           select action, actor_user_id, actor_role, resource_type, resource_id
           from audit_logs where action = 'user.create' order by created_at desc limit 1`;
+        expect(rows.length).toBe(1);
+        expect(rows[0].actor_user_id).toBeTruthy();
+        expect(rows[0].actor_role).toBe('super_admin');
+        expect(rows[0].resource_type).toBe('user');
+        expect(rows[0].resource_id).toBeTruthy();
+      } finally {
+        await owner.end();
+      }
+    });
+
+    // #37：超管更新用户描述（PATCH /api/users/:id）——更新/清空/校验/权限矩阵/404/400
+    it('PATCH /api/users/:id：超管更新描述持久化；内部/客户 403；404；非法 uuid 400；超长 400', async () => {
+      // 目标用户：上一条用例创建的 created@corp.test（describe 顺序依赖）
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const target = list
+        .json()
+        .users.find((u: { email: string }) => u.email === 'created@corp.test');
+      expect(target).toBeTruthy();
+
+      // 超管更新描述 → 200 + 响应契约通过
+      const ok = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { description: '总部实施顾问（华东）' },
+      });
+      expect(ok.statusCode).toBe(200);
+      expect(UpdateUserResponseSchema.safeParse(ok.json()).success).toBe(true);
+      expect(ok.json().user.description).toBe('总部实施顾问（华东）');
+
+      // 持久化：GET 列表可见
+      const relist = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      expect(
+        relist.json().users.find((u: { id: string }) => u.id === target.id)?.description,
+      ).toBe('总部实施顾问（华东）');
+
+      // null 清空 → 200 + description 回 null
+      const clear = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { description: null },
+      });
+      expect(clear.statusCode).toBe(200);
+      expect(clear.json().user.description).toBeNull();
+
+      // 超长描述（>35）→ 400（契约 maxlength 35）
+      const tooLong = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { description: 'x'.repeat(36) },
+      });
+      expect(tooLong.statusCode).toBe(400);
+
+      // 内部更新 → 403（方法级 @Roles 覆盖类级）
+      const deniedInternal = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${internalToken}` },
+        payload: { description: 'x' },
+      });
+      expect(deniedInternal.statusCode).toBe(403);
+
+      // 客户更新 → 403
+      const deniedCustomer = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${target.id}`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { description: 'x' },
+      });
+      expect(deniedCustomer.statusCode).toBe(403);
+
+      // 用户不存在 → 404
+      const missing = await app.inject({
+        method: 'PATCH',
+        url: '/api/users/00000000-0000-0000-0000-000000000000',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { description: 'x' },
+      });
+      expect(missing.statusCode).toBe(404);
+
+      // 非法 uuid → 400（避免 22P02 → 500）
+      const badId = await app.inject({
+        method: 'PATCH',
+        url: '/api/users/not-a-uuid',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { description: 'x' },
+      });
+      expect(badId.statusCode).toBe(400);
+    });
+
+    it('更新用户描述落审计 user.update（actor=超管）', async () => {
+      const owner = connectOwner();
+      try {
+        const rows = await owner`
+          select action, actor_user_id, actor_role, resource_type, resource_id, metadata
+          from audit_logs where action = 'user.update' order by created_at desc limit 1`;
         expect(rows.length).toBe(1);
         expect(rows[0].actor_user_id).toBeTruthy();
         expect(rows[0].actor_role).toBe('super_admin');

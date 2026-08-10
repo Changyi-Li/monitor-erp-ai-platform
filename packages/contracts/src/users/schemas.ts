@@ -32,3 +32,17 @@ export const CreateUserResponseSchema = z.object({
   user: UserAdminSchema,
 });
 export type CreateUserResponse = z.output<typeof CreateUserResponseSchema>;
+
+/**
+ * 超管更新用户资料（#37）：PATCH 语义，当前仅 description；
+ * null 表示清空描述（DB 列可空）。
+ */
+export const UpdateUserRequestSchema = z.object({
+  description: z.string().max(35).nullable(),
+});
+export type UpdateUserRequest = z.output<typeof UpdateUserRequestSchema>;
+
+export const UpdateUserResponseSchema = z.object({
+  user: UserAdminSchema,
+});
+export type UpdateUserResponse = z.output<typeof UpdateUserResponseSchema>;

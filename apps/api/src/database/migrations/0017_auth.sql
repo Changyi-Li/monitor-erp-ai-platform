@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "users_display_name_unique" ON "users" USING btree ("display_name") WHERE "users"."display_name" <> '';

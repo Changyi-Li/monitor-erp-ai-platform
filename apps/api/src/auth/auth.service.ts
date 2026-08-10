@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -18,6 +19,8 @@ import {
   type RefreshResponse,
   type SetPasswordRequest,
   type SetPasswordResponse,
+  type UpdateUserRequest,
+  type UpdateUserResponse,
   type User,
   type UsersListResponse,
 } from '@monitor/contracts';
@@ -52,10 +55,20 @@ export class AuthService {
       throw new ConflictException('该邮箱已注册');
     }
 
+    // 昵称唯一（#37 迭代）：display_name 部分唯一索引兜底，服务层先行查重给友好提示
+    const dupName = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.displayName, displayName))
+      .limit(1);
+    if (dupName.length > 0) {
+      throw new ConflictException('该昵称已被使用');
+    }
+
     const passwordHash = await this.password.hash(input.password);
     const [user] = await this.db
       .insert(users)
-      .values({ email, passwordHash, displayName })
+      .values({ email, passwordHash, displayName, description: displayName })
       .returning();
     if (!user) {
       throw new InternalServerErrorException('创建用户失败');
@@ -243,10 +256,21 @@ export class AuthService {
       throw new ConflictException('该邮箱已注册');
     }
 
+    // 昵称唯一（#37 迭代）：display_name 部分唯一索引兜底，服务层先行查重给友好提示
+    const dupName = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.displayName, displayName))
+      .limit(1);
+    if (dupName.length > 0) {
+      throw new ConflictException('该昵称已被使用');
+    }
+
     const passwordHash = await this.password.hash(input.password);
     const [user] = await this.db
       .insert(users)
-      .values({ email, passwordHash, displayName, role: input.role })
+      // 描述默认昵称（#37 迭代）：创建时 description = displayName，后续可编辑为不同内容
+      .values({ email, passwordHash, displayName, role: input.role, description: displayName })
       .returning();
     if (!user) {
       throw new InternalServerErrorException('创建用户失败');
@@ -272,6 +296,43 @@ export class AuthService {
       users: rows.map((row) => ({ ...toUserDto(row), isActive: row.isActive })),
     };
   }
+
+  /**
+   * 超管更新用户资料（#37，@Roles(super_admin) 守卫）：当前仅 description
+   * （角色/权限变更 #38，密码重置 #39）。先查后更，未命中 404（防探测语义同客户）。
+   */
+  async updateUser(
+    userId: string,
+    input: UpdateUserRequest,
+    actor: AuthUser,
+  ): Promise<UpdateUserResponse> {
+    const [existing] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!existing) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    const [updated] = await this.db
+      .update(users)
+      .set({ description: input.description, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updated) {
+      throw new InternalServerErrorException('更新用户失败');
+    }
+
+    await this.audit.record(AUDIT_ACTIONS.USER_UPDATE, {
+      actorUserId: actor.sub,
+      actorRole: actor.role,
+      resourceType: 'user',
+      resourceId: userId,
+      metadata: { description: input.description },
+    });
+    return { user: { ...toUserDto(updated), isActive: updated.isActive } };
+  }
 }
 
 /** DB 行 → 契约 User：Date 必须 toISOString()（z.iso.datetime() 要求），剔除 passwordHash */
@@ -280,6 +341,7 @@ function toUserDto(row: UserRow): User {
     id: row.id,
     email: row.email,
     displayName: row.displayName,
+    description: row.description ?? null,
     role: row.role as User['role'],
     createdAt: row.createdAt.toISOString(),
   };

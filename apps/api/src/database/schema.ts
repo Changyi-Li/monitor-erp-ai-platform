@@ -30,6 +30,8 @@ export const users = pgTable(
     email: text('email').notNull().unique(), // 服务层统一 lowercase 后存储
     passwordHash: text('password_hash').notNull(),
     displayName: text('display_name').notNull().default(''),
+    // 用户描述（#37：原版「描述」字段，maxlength 35，可空）
+    description: text('description'),
     // 'super_admin' | 'internal' | 'customer'（RBAC issue #13；客户细粒度角色存 project_members）
     role: text('role').notNull().default('internal'),
     isActive: boolean('is_active').notNull().default(true),
@@ -39,7 +41,14 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('users_invite_token_hash_idx').on(t.inviteTokenHash)],
+  (t) => [
+    uniqueIndex('users_invite_token_hash_idx').on(t.inviteTokenHash),
+    // 昵称唯一（#37 迭代）：服务层保证昵称非空（默认 email 前缀），
+    // 部分索引——空昵称（未设置，如测试直插）不参与唯一性
+    uniqueIndex('users_display_name_unique')
+      .on(t.displayName)
+      .where(sql`${t.displayName} <> ''`),
+  ],
 );
 
 export const refreshTokens = pgTable(

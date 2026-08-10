@@ -6,6 +6,8 @@ export const UserSchema = z.object({
   id: z.uuid(),
   email: z.email(),
   displayName: z.string().trim().min(1).max(64),
+  // 用户描述（#37：可空，长度上限对齐原版 maxlength 35）
+  description: z.string().max(35).nullable(),
   role: z.enum(USER_ROLES),
   createdAt: z.iso.datetime(),
 });
