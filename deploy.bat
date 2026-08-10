@@ -27,6 +27,13 @@ call pnpm install --frozen-lockfile || goto :fail
 echo [4/5] pnpm build
 call pnpm build || goto :fail
 
+echo [4.5/5] DB table sanity check
+rem Aborts if required business tables are missing in the database (e.g. the
+rem schema was wiped while the drizzle journal survived - drizzle would
+rem otherwise report a successful no-op migration). Owner credentials are NOT
+rem needed: the restricted app_tenant_user is read-only enough for this.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%APP_ROOT%\docs\scripts\verify_db.ps1" -ConfigPath "%APP_ROOT%\apps\api\.env" || goto :fail
+
 rem Uncomment the three lines below when this update includes a DB migration
 rem (owner credentials required - see docs/deploy-windows.md section 4):
 rem set DATABASE_URL=postgres://postgres:YOUR_PASSWORD@localhost:5432/monitor_erp

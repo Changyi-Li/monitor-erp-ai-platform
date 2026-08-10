@@ -246,7 +246,8 @@ New-NetFirewallRule -DisplayName "Monitor Web 3000" -Direction Inbound -Protocol
 2. `git pull` 拉最新代码
 3. `pnpm install --frozen-lockfile` 安装锁定依赖
 4. `pnpm build` 全仓构建（turbo 自动按 shared → contracts → api → web 顺序，会重建 contracts 产物）
-5. 重启 `monitor-api` / `monitor-web` 服务（先停后启）
+5. **数据库表自检**（`[4.5/5]`）：运行 `docs\scripts\verify_db.ps1`，用受限角色读连接检查 27 张业务表是否齐全。任一缺失立刻中止发版并给出恢复指引（`DROP SCHEMA IF EXISTS drizzle CASCADE;` + `pnpm db:migrate`）——防止「表被清空但 drizzle 迁移记录还在」时迁移静默通过（2026-08 事故：迁移报告成功，实际一张表都没有）
+6. 重启 `monitor-api` / `monitor-web` 服务（先停后启）
 
 本次更新带数据库迁移时：取消 `deploy.bat` 中 `db:migrate` 段的注释并填入 owner 凭据（迁移必须用 owner 连接，见第四节；owner 凭据用完即清，不留驻）。迁移发生在构建后、重启服务前。
 
