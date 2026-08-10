@@ -296,13 +296,18 @@ a {
 
 /* ===== 2. 侧边程序菜单（mat-sidenav.navigation-container） ===== */
 .monitor-side-menu {
-  width: 252px;
+  /* 默认收起（width 0 + 过渡动画）；展开见 .open */
+  width: 0;
   flex-shrink: 0;
   overflow: hidden;
   border-right: 0;
   background-color: var(--mwc-stronger-light);
   display: flex;
   flex-direction: column;
+  transition: width 0.25s ease;
+}
+.monitor-side-menu.open {
+  width: 252px;
 }
 
 /* 搜索区：64px 高，聚焦时模块色下划线（原版 .search-form） */

@@ -36,6 +36,10 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   // 当前选中的模块 key（null = 默认视图：最近/个人/内部应用程序）
   const [selectedModuleKey, setSelectedModuleKey] = useState<string | null>(null);
 
+  // 侧边菜单展开状态（原版 sidenavService menuIsOpen）：默认收起，
+  // 点击模块展开，再点当前模块收起（原版 toggleSidebar 语义）
+  const [menuOpen, setMenuOpen] = useState(false);
+
   // 「查找程序」实时过滤关键字（issue #35）：按程序项 caption 过滤当前菜单
   const [procedureQuery, setProcedureQuery] = useState('');
 
@@ -93,8 +97,15 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     .filter((cat) => cat.items.length > 0);
 
   function handleModuleClick(m: MonitorModule) {
-    // 再点当前模块 → 取消选中回默认视图
-    setSelectedModuleKey((current) => (current === m.key ? null : m.key));
+    if (selectedModuleKey === m.key) {
+      // 再点当前模块 → 收起菜单并取消选中（回默认视图；原版 toggleSidebar 的 toggle 分支）
+      setSelectedModuleKey(null);
+      setMenuOpen(false);
+    } else {
+      // 点其他模块 → 选中并展开菜单（原版 toggleSidebar 的 open 分支）
+      setSelectedModuleKey(m.key);
+      setMenuOpen(true);
+    }
   }
 
   // 模块色联动：侧边菜单的搜索下划线/分类标题/程序项竖条随选中模块变色（原版行为）
@@ -134,8 +145,12 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
         </div>
       </nav>
 
-      {/* 2. 侧边程序菜单 */}
-      <aside className="monitor-side-menu" style={sideMenuStyle} aria-label="程序菜单">
+      {/* 2. 侧边程序菜单（默认收起，点击模块展开；宽度动画见 globals.css） */}
+      <aside
+        className={menuOpen ? 'monitor-side-menu open' : 'monitor-side-menu'}
+        style={sideMenuStyle}
+        aria-label="程序菜单"
+      >
         <div className="search-container">
           <form className="search-form" onSubmit={(e) => e.preventDefault()}>
             <i className="search-icon g5icon icon-toggle-search-o" />
