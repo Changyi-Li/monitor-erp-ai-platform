@@ -24,7 +24,7 @@ import {
  *
  * 模块切换（#32）：菜单数据来自 ../data/monitor-menu.ts（模块 → 分类 → 程序项，
  * 平台功能分门别类）；点击模块高亮并联动侧边菜单，再点当前模块取消选中回默认视图。
- * 搜索过滤由 #35、顶栏交互由 #34、主题切换由 #33 实现。
+ * 「查找程序」实时过滤由 #35 实现；顶栏 Monitor 搜索（#34 实现）暂隐藏；主题切换 #33。
  *
  * 登录/注册页为全屏认证布局（issue #29），此框架不渲染（与旧 Topbar 行为一致）。
  */
@@ -35,6 +35,9 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
 
   // 当前选中的模块 key（null = 默认视图：最近/个人/内部应用程序）
   const [selectedModuleKey, setSelectedModuleKey] = useState<string | null>(null);
+
+  // 「查找程序」实时过滤关键字（issue #35）：按程序项 caption 过滤当前菜单
+  const [procedureQuery, setProcedureQuery] = useState('');
 
   // 内容区背景：复用会话内共享图（登录页随机后写入；无值时随机一张）——
   // 原版 BackgroundImageService 单例行为：登录时选中哪张，主界面就显示哪张，
@@ -47,6 +50,14 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     if (pathname === '/login' || pathname === '/register') return;
     setBackgroundImage(getBackgroundImage());
   }, [pathname]);
+
+  // 未登录访问受保护页面 → 直接跳登录页（刷新后登录态丢失的场景），
+  // 不在主界面停留显示欢迎词；认证页自身不跳转（避免死循环）
+  useEffect(() => {
+    if (status === 'unauthenticated' && pathname !== '/login' && pathname !== '/register') {
+      router.replace('/login');
+    }
+  }, [status, pathname, router]);
 
   // 认证页全屏展示，不渲染主框架
   if (pathname === '/login' || pathname === '/register') return <>{children}</>;
@@ -70,7 +81,16 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
 
   const visibleCategories = filterCategories(
     selectedModule ? selectedModule.categories : homeCategories,
-  );
+  )
+    // issue #35：按「查找程序」关键字实时过滤程序项（中文/英文、大小写不敏感），
+    // 无匹配程序项的分类自动隐藏
+    .map((cat) => ({
+      ...cat,
+      items: cat.items.filter((i) =>
+        i.caption.toLowerCase().includes(procedureQuery.trim().toLowerCase()),
+      ),
+    }))
+    .filter((cat) => cat.items.length > 0);
 
   function handleModuleClick(m: MonitorModule) {
     // 再点当前模块 → 取消选中回默认视图
@@ -124,6 +144,8 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
               data-testid="procedure-search"
               className="search-input"
               placeholder="查找程序"
+              value={procedureQuery}
+              onChange={(e) => setProcedureQuery(e.target.value)}
             />
           </form>
         </div>
@@ -131,9 +153,11 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
           <div className="sub-menu-fade" />
           {visibleCategories.length === 0 ? (
             <p className="menu-empty" data-testid="menu-empty">
-              {selectedModule
-                ? `「${selectedModule.title}」模块暂无程序`
-                : '暂无程序'}
+              {procedureQuery.trim()
+                ? '无匹配程序'
+                : selectedModule
+                  ? `「${selectedModule.title}」模块暂无程序`
+                  : '暂无程序'}
             </p>
           ) : (
             <ul>
@@ -183,9 +207,8 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
                 <span className="g5icon icon-toggle-home-o" />
               </button>
             </div>
-            <div className="search-container">
-              <input type="text" className="search-input" placeholder="Monitor 搜索 (Ctrl + F)" />
-            </div>
+            {/* Monitor 搜索 (Ctrl + F) 暂隐藏：功能属 T5 #34，先移除避免用户在未实现
+                的搜索框里输入造成误解（样式 .monitor-toolbar .search-container 保留，#34 恢复） */}
             <div className="user-actions">
               {status === 'loading' && <span style={{ fontSize: 12, color: 'var(--mwc-text-light)' }}>加载中…</span>}
               {status === 'authenticated' && user && (

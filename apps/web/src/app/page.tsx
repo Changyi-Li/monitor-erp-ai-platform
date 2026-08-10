@@ -97,14 +97,9 @@ export default function HomePage() {
     return <p>加载中…</p>;
   }
 
+  // 未登录：不显示欢迎词，由 MonitorFrame 守卫统一跳转 /login
   if (status === 'unauthenticated' || !user) {
-    return (
-      <div>
-        <h1>欢迎来到 Monitor ERP AI Platform</h1>
-        <p>请先登录以继续。</p>
-        <Link href="/login">前往登录</Link>
-      </div>
-    );
+    return null;
   }
 
   // 平台角色：全部卡片；客户角色：仅客户/项目/知识库
