@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -17,6 +18,8 @@ import {
   type RegisterRequest,
   type RegisterResponse,
   type RefreshResponse,
+  type ResetUserPasswordRequest,
+  type ResetUserPasswordResponse,
   type SetPasswordRequest,
   type SetPasswordResponse,
   type UpdateUserRequest,
@@ -351,6 +354,44 @@ export class AuthService {
       },
     });
     return { user: { ...toUserDto(updated), isActive: updated.isActive } };
+  }
+
+  /**
+   * 重置用户密码（#39）：改自己 = 任何登录角色；改别人 = 仅超管（用户拍板）。
+   * 先查后更，未命中 404（防探测语义同 updateUser）。
+   */
+  async resetUserPassword(
+    userId: string,
+    input: ResetUserPasswordRequest,
+    actor: AuthUser,
+  ): Promise<ResetUserPasswordResponse> {
+    const [existing] = await this.db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!existing) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    if (actor.sub !== userId && actor.role !== 'super_admin') {
+      throw new ForbiddenException('没有权限执行该操作');
+    }
+
+    const passwordHash = await this.password.hash(input.password);
+    await this.db
+      .update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+
+    await this.audit.record(AUDIT_ACTIONS.USER_RESET_PASSWORD, {
+      actorUserId: actor.sub,
+      actorRole: actor.role,
+      resourceType: 'user',
+      resourceId: userId,
+      metadata: { email: existing.email },
+    });
+    return { ok: true };
   }
 }
 

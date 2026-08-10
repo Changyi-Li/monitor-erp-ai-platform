@@ -1,13 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { z } from 'zod';
 import {
   CreateUserRequestSchema,
   CreateUserResponseSchema,
+  ResetUserPasswordRequestSchema,
+  ResetUserPasswordResponseSchema,
   UpdateUserRequestSchema,
   UpdateUserResponseSchema,
   UsersListResponseSchema,
   type CreateUserRequest,
   type CreateUserResponse,
+  type ResetUserPasswordRequest,
+  type ResetUserPasswordResponse,
   type UpdateUserRequest,
   type UpdateUserResponse,
   type UsersListResponse,
@@ -56,5 +60,22 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ): Promise<UpdateUserResponse> {
     return this.auth.updateUser(id, body, actor);
+  }
+
+  /**
+   * 重置用户密码（#39）：改自己 = 任何登录角色（方法级 @Roles 覆盖类级，customer 也能进）；
+   * 改别人 = 仅超管（service 层目标鉴权）。
+   */
+  @Post(':id/reset-password')
+  // 重置 = 更新语义（非创建资源），返回 200 而非 POST 默认 201
+  @HttpCode(200)
+  @Roles('super_admin', 'internal', 'customer')
+  @ZodResponse(ResetUserPasswordResponseSchema)
+  resetUserPassword(
+    @Param('id', uuidParam) id: string,
+    @Body(new ZodValidationPipe(ResetUserPasswordRequestSchema)) body: ResetUserPasswordRequest,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<ResetUserPasswordResponse> {
+    return this.auth.resetUserPassword(id, body, actor);
   }
 }

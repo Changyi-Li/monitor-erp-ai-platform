@@ -11,6 +11,7 @@ export const AUDIT_ACTIONS = {
   USER_INVITE: 'user.invite',
   USER_CREATE: 'user.create',
   USER_UPDATE: 'user.update',
+  USER_RESET_PASSWORD: 'user.reset_password',
   CUSTOMER_CREATE: 'customer.create',
   CUSTOMER_UPDATE: 'customer.update',
   PROJECT_CREATE: 'project.create',

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CreateUserResponseSchema,
   CustomerCreateResponseSchema,
+  ResetUserPasswordResponseSchema,
   UpdateUserResponseSchema,
   UsersListResponseSchema,
   type CreateUserResponse,
@@ -43,9 +44,16 @@ export default function UsersPage() {
   const [roleSaveError, setRoleSaveError] = useState('');
   const [roleSaveOk, setRoleSaveOk] = useState('');
 
+  // 重置密码（#39 安全页签：改自己 = 任何登录角色；改别人 = 仅超管）
+  const [resetPw, setResetPw] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetOk, setResetOk] = useState('');
+
   // 页签（原版 mwc-tabs；角色/用户权限内容 #38 完善，本 ticket 先呈现只读摘要；
-  // 管理操作 = 建内部用户/建客户，超管专属，跟在「用户权限」后面）
-  const [activeTab, setActiveTab] = useState<'general' | 'roles' | 'permissions' | 'admin'>('general');
+  // 安全 = #39 验证方式只读 + 重置密码（所有登录用户可见，可改自己）；
+  // 管理操作 = 建内部用户/建客户，超管专属，跟在「安全」后面）
+  const [activeTab, setActiveTab] = useState<'general' | 'roles' | 'permissions' | 'security' | 'admin'>('general');
 
   // 左侧列表按昵称搜索（#37 迭代：昵称唯一，支持搜索）
   const [nameQuery, setNameQuery] = useState('');
@@ -88,7 +96,7 @@ export default function UsersPage() {
     return list.filter((u) => u.displayName.toLowerCase().includes(q));
   }, [data, nameQuery]);
 
-  // 选中用户变化 → 描述/角色草稿同步（避免保存旧用户残留）
+  // 选中用户变化 → 描述/角色草稿同步（避免保存旧用户残留）+ 重置密码状态清零
   useEffect(() => {
     setDescriptionDraft(selectedUser?.description ?? '');
     setRoleDraft(selectedUser?.role ?? 'internal');
@@ -96,6 +104,9 @@ export default function UsersPage() {
     setSaveError('');
     setRoleSaveOk('');
     setRoleSaveError('');
+    setResetPw('');
+    setResetError('');
+    setResetOk('');
   }, [selectedUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSuperAdmin = user?.role === 'super_admin';
@@ -160,6 +171,28 @@ export default function UsersPage() {
       setRoleSaveError(errorMessage(err));
     } finally {
       setRoleSaving(false);
+    }
+  }
+
+  /** 重置密码（#39）：改自己 = 任何登录角色；改别人 = 仅超管（后端 service 层鉴权兜底） */
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedUser || !resetPw) return;
+    setResetError('');
+    setResetOk('');
+    setResetting(true);
+    try {
+      await apiFetch(`/api/users/${selectedUser.id}/reset-password`, {
+        method: 'POST',
+        body: { password: resetPw },
+        schema: ResetUserPasswordResponseSchema,
+      });
+      setResetPw('');
+      setResetOk('密码已重置，新密码已生效');
+    } catch (err) {
+      setResetError(errorMessage(err));
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -384,10 +417,11 @@ export default function UsersPage() {
                     ['general', '通用'],
                     ['roles', '角色'],
                     ['permissions', '用户权限'],
+                    ['security', '安全'],
                     ['admin', '管理操作'],
                   ] as const
                 )
-                  // 管理操作 = 超管专属页签（内部用户无创建权限）
+                  // 安全 = 所有登录用户可见（可改自己密码）；管理操作 = 超管专属页签
                   .filter(([key]) => key !== 'admin' || isSuperAdmin)
                   .map(([key, label]) => (
                   <button
@@ -517,6 +551,62 @@ export default function UsersPage() {
                         </>
                       )}
                     </ul>
+                  </div>
+                )}
+                {activeTab === 'security' && (
+                  <div style={{ display: 'grid', gap: 16, maxWidth: 560 }}>
+                    <section>
+                      <h3 style={{ fontSize: 13, margin: '0 0 8px', color: 'var(--mwc-text-light, #6b7280)' }}>
+                        验证方式（只读）
+                      </h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(160px, 1fr))', gap: '12px 24px' }}>
+                        <Field label="邮箱" value={selectedUser.email} />
+                        {/* 不暴露密码明文，只展示状态（原版安全页签同样只显示掩码） */}
+                        <Field label="密码" value={selectedUser.id === user?.id ? '（本人账号）' : '已设置'} />
+                      </div>
+                    </section>
+                    <section>
+                      <h3 style={{ fontSize: 13, margin: '0 0 8px', color: 'var(--mwc-text-light, #6b7280)' }}>
+                        重置密码
+                      </h3>
+                      {selectedUser.id === user?.id || isSuperAdmin ? (
+                        <form
+                          onSubmit={handleResetPassword}
+                          style={{
+                            display: 'flex',
+                            gap: 8,
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            padding: 12,
+                            border: '1px solid #e5e7eb',
+                            borderRadius: 8,
+                            background: 'var(--mwc-lighter, #f9fafb)',
+                          }}
+                        >
+                          <input
+                            type="password"
+                            placeholder="新密码（至少 6 位）"
+                            value={resetPw}
+                            onChange={(e) => setResetPw(e.target.value)}
+                            style={inputStyle}
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="submit"
+                            disabled={resetting || resetPw.length < 6}
+                            className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                          >
+                            <span className="dx-button-text">{resetting ? '重置中…' : '重置密码'}</span>
+                          </button>
+                          {resetOk && <span style={{ color: '#15803d', fontSize: 13 }}>{resetOk}</span>}
+                          {resetError && <span style={{ color: '#b91c1c', fontSize: 13 }}>{resetError}</span>}
+                        </form>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: 13, color: 'var(--mwc-text-light, #6b7280)' }}>
+                          只能修改自己的密码
+                        </p>
+                      )}
+                    </section>
                   </div>
                 )}
                 {activeTab === 'admin' && (

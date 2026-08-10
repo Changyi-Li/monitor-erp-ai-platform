@@ -11,6 +11,7 @@ import {
   ProjectCreateResponseSchema,
   ProjectGetResponseSchema,
   ProjectsListResponseSchema,
+  ResetUserPasswordResponseSchema,
   SetPasswordResponseSchema,
   UpdateUserResponseSchema,
   UsersListResponseSchema,
@@ -846,6 +847,183 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         expect(rows[0].actor_role).toBe('super_admin');
         const metadata = JSON.parse(rows[0].metadata as string) as Record<string, unknown>;
         expect(metadata.role).toBe('internal'); // 最新一条 = 改回 internal 的角色变更
+      } finally {
+        await owner.end();
+      }
+    });
+
+    // #39：安全页签后端 —— 重置密码（POST /api/users/:id/reset-password）
+    // 权限模型（用户拍板）：任何人可改自己密码；超管可改任何人（含自己）；非超管改别人 → 403
+    it('超管重置他人密码：200 契约通过；新密码登录 200、旧密码 401（旧密码即刻失效）', async () => {
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const target = list
+        .json()
+        .users.find((u: { email: string }) => u.email === 'created@corp.test');
+      expect(target).toBeTruthy();
+
+      const ok = await app.inject({
+        method: 'POST',
+        url: `/api/users/${target.id}/reset-password`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { password: 'ResetPass456' },
+      });
+      expect(ok.statusCode).toBe(200);
+      expect(ResetUserPasswordResponseSchema.safeParse(ok.json()).success).toBe(true);
+
+      // 新密码可登录（密码实际生效）
+      const loginNew = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'created@corp.test', password: 'ResetPass456' },
+      });
+      expect(loginNew.statusCode).toBe(200);
+
+      // 旧密码失效（#38 用例初始密码 NewPass123）
+      const loginOld = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'created@corp.test', password: 'NewPass123' },
+      });
+      expect(loginOld.statusCode).toBe(401);
+    });
+
+    it('internal/customer 改自己密码：200 + 新密码可登录（用户拍板：非超管可改自己）', async () => {
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const users = list.json().users as { id: string; email: string }[];
+      const internalUser = users.find((u) => u.email === 'internal@corp.test');
+      const pmUser = users.find((u) => u.email === 'pm@a.test');
+      expect(internalUser).toBeTruthy();
+      expect(pmUser).toBeTruthy();
+
+      // internal 改自己 → 200 + 新密码可登录
+      const selfInternal = await app.inject({
+        method: 'POST',
+        url: `/api/users/${internalUser.id}/reset-password`,
+        headers: { authorization: `Bearer ${internalToken}` },
+        payload: { password: 'InternalNew1' },
+      });
+      expect(selfInternal.statusCode).toBe(200);
+      const internalLogin = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'internal@corp.test', password: 'InternalNew1' },
+      });
+      expect(internalLogin.statusCode).toBe(200);
+
+      // customer（pm）改自己 → 200 + 新密码可登录
+      const selfPm = await app.inject({
+        method: 'POST',
+        url: `/api/users/${pmUser.id}/reset-password`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { password: 'PmNewPass1' },
+      });
+      expect(selfPm.statusCode).toBe(200);
+      const pmLogin = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'pm@a.test', password: 'PmNewPass1' },
+      });
+      expect(pmLogin.statusCode).toBe(200);
+    });
+
+    it('internal/customer 改别人 → 403；超管改自己 → 200（不禁止重置自己）', async () => {
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const users = list.json().users as { id: string; email: string }[];
+      const adminUser = users.find((u) => u.email === 'admin@corp.test');
+      const createdUser = users.find((u) => u.email === 'created@corp.test');
+      expect(adminUser).toBeTruthy();
+      expect(createdUser).toBeTruthy();
+
+      // internal 改别人（created@corp.test）→ 403（service 层目标鉴权）
+      const deniedInternal = await app.inject({
+        method: 'POST',
+        url: `/api/users/${createdUser.id}/reset-password`,
+        headers: { authorization: `Bearer ${internalToken}` },
+        payload: { password: 'HackPass123' },
+      });
+      expect(deniedInternal.statusCode).toBe(403);
+
+      // customer 改别人 → 403
+      const deniedCustomer = await app.inject({
+        method: 'POST',
+        url: `/api/users/${createdUser.id}/reset-password`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { password: 'HackPass123' },
+      });
+      expect(deniedCustomer.statusCode).toBe(403);
+
+      // 超管改自己 → 200
+      const selfAdmin = await app.inject({
+        method: 'POST',
+        url: `/api/users/${adminUser.id}/reset-password`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { password: 'AdminNewPass1' },
+      });
+      expect(selfAdmin.statusCode).toBe(200);
+    });
+
+    it('用户不存在 404；非法 uuid 400；密码过短 400', async () => {
+      const missing = await app.inject({
+        method: 'POST',
+        url: '/api/users/00000000-0000-0000-0000-000000000000/reset-password',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { password: 'NewPass123' },
+      });
+      expect(missing.statusCode).toBe(404);
+
+      const badId = await app.inject({
+        method: 'POST',
+        url: '/api/users/not-a-uuid/reset-password',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { password: 'NewPass123' },
+      });
+      expect(badId.statusCode).toBe(400);
+
+      // 密码过短（< 6 位）→ 400（契约校验，不落库）
+      const short = await app.inject({
+        method: 'POST',
+        url: '/api/users/00000000-0000-4000-8000-000000000000/reset-password',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { password: '123' },
+      });
+      expect(short.statusCode).toBe(400);
+    });
+
+    it('重置密码落审计 user.reset_password（metadata 含目标邮箱）', async () => {
+      const owner = connectOwner();
+      try {
+        const rows = await owner`
+          select action, actor_user_id, actor_role, resource_type, resource_id, metadata
+          from audit_logs where action = 'user.reset_password' order by created_at desc`;
+        // metadata 经 drizzle 双重序列化（jsonb 值本身是字符串），postgres-js 解析后代码侧再 parse 一次（同 #38 审计断言模式）
+        const withMeta = rows.map((r) => ({
+          ...r,
+          meta: JSON.parse(r.metadata as string) as Record<string, unknown>,
+        }));
+        // 超管重置 created@corp.test 的那条：actor=超管 + resource_id=目标
+        const target = withMeta.find((r) => r.meta.email === 'created@corp.test');
+        expect(target).toBeTruthy();
+        expect(target!.actor_role).toBe('super_admin');
+        expect(target!.resource_type).toBe('user');
+        expect(target!.resource_id).toBeTruthy();
+
+        // 改自己同样落审计（internal 那条）
+        const selfRow = withMeta.find((r) => r.meta.email === 'internal@corp.test');
+        expect(selfRow).toBeTruthy();
+        expect(selfRow!.actor_role).toBe('internal');
+        expect(selfRow!.resource_id).toBeTruthy();
       } finally {
         await owner.end();
       }
