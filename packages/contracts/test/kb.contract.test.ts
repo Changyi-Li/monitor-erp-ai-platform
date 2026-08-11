@@ -16,6 +16,8 @@ const validIsoDate = '2026-08-06T02:30:00.000Z';
 
 const validDoc = {
   id: validUuid,
+  // #26 引入：归属（null = 全局文档，内部知识库）
+  projectId: null,
   title: '标准操作手册：库存盘点',
   category: 'manual',
   docType: 'markdown',

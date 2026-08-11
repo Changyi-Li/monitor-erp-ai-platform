@@ -1,4 +1,10 @@
-import { Global, Module, type DynamicModule } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Module,
+  type DynamicModule,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -15,6 +21,13 @@ export const DRIZZLE = Symbol('DRIZZLE');
  * 业务代码严禁注入——裸连接在 RLS 表上会 fail closed 或绕过租户约束。
  */
 export const RAW_DB = Symbol('RAW_DB');
+/**
+ * POSTGRES_CLIENT：postgres.js 原生连接池（RAW_DB/DRIZZLE 的底座）。
+ * 模块 onApplicationShutdown 时统一 end()——app.close() 不自动关闭它，
+ * e2e 单进程串行多 app 时连接累积会打爆 max_connections 导致后续文件
+ * beforeAll 挂死（stages 30s 超时即此根因）。
+ */
+export const POSTGRES_CLIENT = Symbol('POSTGRES_CLIENT');
 export type Database = PostgresJsDatabase<typeof schema>;
 
 /** ALS 感知代理：上下文存在请求事务时转发 tx 客户端，否则走 base */
@@ -42,7 +55,16 @@ function createTenantAwareProxy(
  */
 @Global()
 @Module({})
-export class DrizzleModule {
+export class DrizzleModule implements OnApplicationShutdown {
+  constructor(
+    @Inject(POSTGRES_CLIENT) private readonly client: postgres.Sql,
+  ) {}
+
+  /** app.close()/SIGTERM 时关闭连接池（优雅退出；e2e 串行多 app 不累积连接） */
+  async onApplicationShutdown(): Promise<void> {
+    await this.client.end();
+  }
+
   static forRoot(): DynamicModule {
     return {
       module: DrizzleModule,
@@ -50,12 +72,16 @@ export class DrizzleModule {
       providers: [
         TenantContextService,
         {
-          provide: RAW_DB,
+          provide: POSTGRES_CLIENT,
           inject: [ConfigService],
-          useFactory: (config: ConfigService): Database => {
-            const client = postgres(config.getOrThrow<string>('DATABASE_URL'));
-            return drizzle(client, { schema });
-          },
+          useFactory: (config: ConfigService): postgres.Sql =>
+            postgres(config.getOrThrow<string>('DATABASE_URL')),
+        },
+        {
+          provide: RAW_DB,
+          inject: [POSTGRES_CLIENT],
+          useFactory: (client: postgres.Sql): Database =>
+            drizzle(client, { schema }),
         },
         {
           provide: DRIZZLE,

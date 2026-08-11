@@ -21,6 +21,8 @@ const validUser = {
   id: validUuid,
   email: 'alice@example.com',
   displayName: 'Alice',
+  // #37 引入：描述可空（缺省无描述）
+  description: null,
   role: 'internal',
   createdAt: validIsoDate,
 } satisfies User;
