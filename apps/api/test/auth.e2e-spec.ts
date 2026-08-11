@@ -89,6 +89,29 @@ describe('Auth API e2e', () => {
       });
       expect(shortPassword.status).toBe(400);
     });
+
+    it('AUTH_SELF_REGISTER 关闭时 → 403（生产默认：客户不能自助注册成内部账号）', async () => {
+      // 独立 app 实例：ConfigService 在实例化时读 process.env，隔离于上面的主实例（.env.test 开着开关）
+      process.env.AUTH_SELF_REGISTER = 'false';
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      const lockedApp = moduleRef.createNestApplication<NestFastifyApplication>(
+        new FastifyAdapter(),
+      );
+      lockedApp.setGlobalPrefix('api');
+      await lockedApp.init();
+      try {
+        const res = await lockedApp.inject({
+          method: 'POST',
+          url: '/api/auth/register',
+          payload: { email: 'self-service@example.com', password: 'password123' },
+        });
+        expect(res.statusCode).toBe(403);
+        expect((res.json() as { message: string }).message).toContain('注册已关闭');
+      } finally {
+        await lockedApp.close();
+        delete process.env.AUTH_SELF_REGISTER;
+      }
+    });
   });
 
   describe('登录', () => {

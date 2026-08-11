@@ -45,7 +45,8 @@ function filterCategories(
  * 点击模块按钮只切换菜单内容/开合，不改变 active 态（跳转到该模块页面才变色，用户确认）。
  * 「查找程序」实时过滤由 #35 实现；顶栏 Monitor 搜索（#34 实现）暂隐藏；主题切换 #33。
  *
- * 登录/注册页为全屏认证布局（issue #29），此框架不渲染（与旧 Topbar 行为一致）。
+ * 登录页为全屏认证布局（issue #29），此框架不渲染（与旧 Topbar 行为一致）。
+ * 自助注册已关闭（AUTH_SELF_REGISTER=false），无 /register 页面。
  */
 export function MonitorFrame({ children }: { children: ReactNode }) {
   const { user, status, logout } = useAuth();
@@ -65,12 +66,12 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   // 内容区背景：复用会话内共享图（登录页随机后写入；无值时随机一张）——
   // 原版 BackgroundImageService 单例行为：登录时选中哪张，主界面就显示哪张，
   // 只有整页刷新（模块重载）才随机下一张。用 useEffect 避免 SSR/hydration 不一致。
-  // 注意：本组件在 /login、/register 下也挂载（仅 return children），认证路径必须
+  // 注意：本组件在 /login 下也挂载（仅 return children），认证路径必须
   // 跳过读取，否则会先于登录页 layout 随机抢图污染共享状态；随 pathname 变化重读，
   // 保证登录后主界面复用登录页那张
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   useEffect(() => {
-    if (pathname === '/login' || pathname === '/register') return;
+    if (pathname === '/login') return;
     setBackgroundImage(getBackgroundImage());
   }, [pathname]);
 
@@ -170,9 +171,9 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   }, [userMenuOpen]);
 
   // 未登录访问受保护页面 → 直接跳登录页（刷新后登录态丢失的场景），
-  // 不在主界面停留显示欢迎词；认证页自身不跳转（避免死循环）
+  // 不在主界面停留显示欢迎词；登录页自身不跳转（避免死循环）
   useEffect(() => {
-    if (status === 'unauthenticated' && pathname !== '/login' && pathname !== '/register') {
+    if (status === 'unauthenticated' && pathname !== '/login') {
       router.replace('/login');
     }
   }, [status, pathname, router]);
@@ -209,7 +210,7 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   }, [routeModuleKey]);
 
   // 认证页全屏展示，不渲染主框架
-  if (pathname === '/login' || pathname === '/register') return <>{children}</>;
+  if (pathname === '/login') return <>{children}</>;
 
   async function handleLogout() {
     await logout();
@@ -454,14 +455,11 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
                 </>
               )}
               {status === 'unauthenticated' && (
-                <>
-                  <Link href="/login" style={{ fontSize: 12, color: 'var(--mwc-secondary)' }}>
-                    登录
-                  </Link>
-                  <Link href="/register" style={{ fontSize: 12, color: 'var(--mwc-secondary)' }}>
-                    注册
-                  </Link>
-                </>
+                // 自助注册已关闭（AUTH_SELF_REGISTER=false）：顶栏只保留登录入口，
+                // 账号由管理员创建或邀请链接加入
+                <Link href="/login" style={{ fontSize: 12, color: 'var(--mwc-secondary)' }}>
+                  登录
+                </Link>
               )}
             </div>
           </div>

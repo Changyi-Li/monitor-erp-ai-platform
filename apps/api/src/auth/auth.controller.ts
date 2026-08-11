@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -31,6 +32,7 @@ import {
   type SetPasswordRequest,
   type SetPasswordResponse,
 } from '@monitor/contracts';
+import { ConfigService } from '@nestjs/config';
 import { CurrentUser, type AuthUser } from '../common/current-user.decorator';
 import { Public } from '../common/public.decorator';
 import { ZodResponse } from '../common/zod-response.interceptor';
@@ -39,14 +41,26 @@ import { AuthService } from './auth.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: ConfigService,
+  ) {}
 
+  /**
+   * 自助注册默认关闭（AUTH_SELF_REGISTER=false）——建号唯一入口：超管建内部用户
+   * （POST /users，US-3）/ 项目邀请客户（US-4）。避免客户拿到网址自助注册成内部账号。
+   * 开关仅留给开发/测试环境（e2e 的 .env.test 打开）。
+   */
   @Public()
   @Post('register')
   @ZodResponse(RegisterResponseSchema)
   register(
     @Body(new ZodValidationPipe(RegisterRequestSchema)) body: RegisterRequest,
   ): Promise<RegisterResponse> {
+    // 显式字符串比较：ConfigService 不做布尔解析，'false' 字符串是 truthy
+    if (this.config.get<string>('AUTH_SELF_REGISTER') !== 'true') {
+      throw new ForbiddenException('注册已关闭：账号由管理员创建或通过邀请链接加入');
+    }
     return this.auth.register(body);
   }
 

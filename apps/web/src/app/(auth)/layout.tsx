@@ -5,10 +5,10 @@ import type { ReactNode } from 'react';
 import { pickBackgroundImage } from '../../lib/background-image';
 
 /**
- * 认证页（登录/注册）全屏布局：Monitor 风格随机背景图（每次挂载随机一张，
+ * 登录页全屏布局：Monitor 风格随机背景图（每次挂载随机一张，
  * 原版 newBackgroundImage=true 行为）+ 暗色 overlay + 居中白色 logo。
  * 随机结果写入共享 store，登录后主界面复用同一张（见 lib/background-image.ts）。
- * route group 不影响 URL（仍为 /login、/register）。
+ * route group 不影响 URL（仍为 /login）。
  */
 export default function AuthLayout({ children }: { children: ReactNode }) {
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);

@@ -48,7 +48,7 @@ a {
   }
 }
 
-/* Monitor 风格认证表单：聚焦时下划线点亮（深色背景登录/注册页，issue #29） */
+/* Monitor 风格认证表单：聚焦时下划线点亮（深色背景登录页，issue #29） */
 .auth-input:focus {
   border-bottom-color: #ffffff;
 }

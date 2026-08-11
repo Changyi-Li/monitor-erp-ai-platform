@@ -4,13 +4,8 @@ import { useState, type CSSProperties, type FormEvent } from 'react';
 import { errorMessage } from '../lib/api';
 
 interface AuthFormProps {
-  mode: 'login' | 'register';
   submitLabel: string;
-  onSubmit: (values: {
-    email: string;
-    password: string;
-    displayName?: string;
-  }) => Promise<void>;
+  onSubmit: (values: { email: string; password: string }) => Promise<void>;
 }
 
 /** 字段容器/输入框/按钮样式：Monitor 登录页风格（深色背景上用，白色下划线输入框） */
@@ -50,11 +45,14 @@ const submitStyle: CSSProperties = {
   cursor: 'pointer',
 };
 
-/** 通用认证表单：邮箱 + 密码（注册含昵称），错误提示读取契约错误文案；样式为深色背景 Monitor 风格 */
-export function AuthForm({ mode, submitLabel, onSubmit }: AuthFormProps) {
+/**
+ * 登录表单：邮箱 + 密码，错误提示读取契约错误文案；样式为深色背景 Monitor 风格。
+ * 自助注册已关闭（AUTH_SELF_REGISTER=false）：账号只能由管理员创建或邀请链接加入，
+ * 登录页不再有注册入口（auth-form 只服务登录）。
+ */
+export function AuthForm({ submitLabel, onSubmit }: AuthFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -63,11 +61,7 @@ export function AuthForm({ mode, submitLabel, onSubmit }: AuthFormProps) {
     setError(null);
     setSubmitting(true);
     try {
-      await onSubmit({
-        email,
-        password,
-        ...(mode === 'register' ? { displayName: displayName.trim() || undefined } : {}),
-      });
+      await onSubmit({ email, password });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -91,18 +85,6 @@ export function AuthForm({ mode, submitLabel, onSubmit }: AuthFormProps) {
           style={inputStyle}
         />
       </label>
-      {mode === 'register' && (
-        <label style={fieldStyle}>
-          <span style={labelStyle}>昵称（可选）</span>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            className="auth-input"
-            style={inputStyle}
-          />
-        </label>
-      )}
       <label style={fieldStyle}>
         <span style={labelStyle}>密码</span>
         <input
@@ -110,7 +92,7 @@ export function AuthForm({ mode, submitLabel, onSubmit }: AuthFormProps) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          minLength={mode === 'register' ? 8 : 1}
+          minLength={1}
           className="auth-input"
           style={inputStyle}
         />
