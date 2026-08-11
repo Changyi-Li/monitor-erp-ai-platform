@@ -12,6 +12,7 @@ export const AUDIT_ACTIONS = {
   USER_CREATE: 'user.create',
   USER_UPDATE: 'user.update',
   USER_RESET_PASSWORD: 'user.reset_password',
+  USER_INVITE_EXPIRED: 'user.invite_expired',
   CUSTOMER_CREATE: 'customer.create',
   CUSTOMER_UPDATE: 'customer.update',
   PROJECT_CREATE: 'project.create',
@@ -63,7 +64,8 @@ export const AUDIT_ACTIONS = {
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
 export interface AuditInput {
-  actorUserId?: string;
+  /** 显式 null = 系统动作无账号主体（uuid 列）；undefined = 回落请求上下文 */
+  actorUserId?: string | null;
   actorRole: string;
   resourceType: string;
   resourceId?: string;
@@ -87,7 +89,9 @@ export class AuditService {
   async record(action: AuditAction, input: AuditInput): Promise<void> {
     const ctx = this.tenantContext.current;
     await this.db.insert(auditLogs).values({
-      actorUserId: input.actorUserId ?? ctx?.userId,
+      // 显式 null = 系统动作无账号主体；只有 undefined 才回落请求上下文（uuid 列，不能落 'system' 这类哨兵串）
+      actorUserId:
+        input.actorUserId !== undefined ? input.actorUserId : (ctx?.userId ?? null),
       actorRole: input.actorRole,
       action,
       resourceType: input.resourceType,
