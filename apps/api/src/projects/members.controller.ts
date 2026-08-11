@@ -1,6 +1,17 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { z } from 'zod';
 import {
+  MemberCancelInviteResponseSchema,
   MemberInviteRequestSchema,
   MemberInviteResponseSchema,
   MembersListResponseSchema,
@@ -50,5 +61,17 @@ export class MembersController {
     @Body(new ZodValidationPipe(MemberUpdateRequestSchema)) body: MemberUpdateRequest,
   ): Promise<void> {
     return this.members.update(id, userId, actor, body);
+  }
+
+  /** 取消邀请（issue #43）：删除待激活客户账号，旧链接失效 */
+  @Delete(':userId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ZodResponse(MemberCancelInviteResponseSchema) // 204 无响应体
+  cancelInvite(
+    @Param('id', new ZodValidationPipe(z.uuid())) id: string,
+    @Param('userId', new ZodValidationPipe(z.uuid())) userId: string,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<void> {
+    return this.members.cancelInvite(id, userId, actor);
   }
 }

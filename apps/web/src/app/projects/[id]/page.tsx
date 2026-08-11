@@ -4,11 +4,13 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
+  MemberCancelInviteResponseSchema,
   MemberInviteResponseSchema,
   MembersListResponseSchema,
   ProjectGetResponseSchema,
   type MemberInviteResponse,
   type MembersListResponse,
+  type PendingInvite,
   type ProjectGetResponse,
 } from '@monitor/contracts';
 import { PROJECT_ROLE_LABELS } from '../../../lib/roles';
@@ -52,6 +54,14 @@ export default function ProjectDetailPage() {
       .catch((err: unknown) => setError(errorMessage(err)));
   }, [id]);
 
+  /** 刷新成员两栏列表（邀请/重发/取消/停用后共用） */
+  async function refreshMembers() {
+    const fresh = await apiFetch(`/api/projects/${id}/members`, {
+      schema: MembersListResponseSchema,
+    });
+    setMembers(fresh);
+  }
+
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
     setInviteError('');
@@ -65,14 +75,45 @@ export default function ProjectDetailPage() {
       });
       setInviteResult(res);
       setForm({ email: '', displayName: '', role: 'regular_user' });
-      const fresh = await apiFetch(`/api/projects/${id}/members`, {
-        schema: MembersListResponseSchema,
-      });
-      setMembers(fresh);
+      await refreshMembers();
     } catch (err) {
       setInviteError(errorMessage(err));
     } finally {
       setInviting(false);
+    }
+  }
+
+  /** 重发邀请（issue #43）：生成新链接（旧链接立即失效），展示供复制分发 */
+  async function handleResend(p: PendingInvite) {
+    setInviteError('');
+    setInviteResult(null);
+    try {
+      const res = await apiFetch(`/api/projects/${id}/members`, {
+        method: 'POST',
+        body: { email: p.email, role: p.role },
+        schema: MemberInviteResponseSchema,
+      });
+      setInviteResult(res);
+      await refreshMembers();
+    } catch (err) {
+      setInviteError(errorMessage(err));
+    }
+  }
+
+  /** 取消邀请（issue #43）：删除待激活账号，旧链接立即失效 */
+  async function handleCancelInvite(p: PendingInvite) {
+    if (!window.confirm(`取消对 ${p.email} 的邀请？该账号将被删除，旧链接立即失效。`)) {
+      return;
+    }
+    setInviteError('');
+    try {
+      await apiFetch(`/api/projects/${id}/members/${p.userId}`, {
+        method: 'DELETE',
+        schema: MemberCancelInviteResponseSchema,
+      });
+      await refreshMembers();
+    } catch (err) {
+      setInviteError(errorMessage(err));
     }
   }
 
@@ -81,12 +122,9 @@ export default function ProjectDetailPage() {
       await apiFetch(`/api/projects/${id}/members/${memberUserId}`, {
         method: 'PATCH',
         body: { isActive: !isActive },
-        schema: MemberInviteResponseSchema.optional(),
+        schema: MemberCancelInviteResponseSchema,
       });
-      const fresh = await apiFetch(`/api/projects/${id}/members`, {
-        schema: MembersListResponseSchema,
-      });
-      setMembers(fresh);
+      await refreshMembers();
     } catch (err) {
       setInviteError(errorMessage(err));
     }
@@ -192,6 +230,63 @@ export default function ProjectDetailPage() {
           )}
           {inviteResult && !inviteResult.inviteUrl && (
             <p style={{ color: '#6b7280' }}>该用户已是活跃账号，已直接加入项目。</p>
+          )}
+
+          <h3>待激活邀请</h3>
+          {members && members.pendingInvites.length > 0 ? (
+            <table
+              style={{ borderCollapse: 'collapse', width: '100%' }}
+              border={1}
+              cellPadding={8}
+            >
+              <thead>
+                <tr>
+                  <th>姓名</th>
+                  <th>邮箱</th>
+                  <th>角色</th>
+                  <th>邀请过期时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.pendingInvites.map((p) => {
+                  // 客户 PM 不能操作 project_manager 角色的邀请（后端 403 兜底）
+                  const locked = viewerRole === 'project_manager' && p.role === 'project_manager';
+                  const expired = Date.parse(p.expiresAt) < Date.now();
+                  return (
+                    <tr key={p.userId}>
+                      <td>{p.displayName}</td>
+                      <td>{p.email}</td>
+                      <td>{PROJECT_ROLE_LABELS[p.role]}</td>
+                      <td style={expired ? { color: '#b91c1c' } : undefined}>
+                        {new Date(p.expiresAt).toLocaleString()}
+                        {expired ? '（已过期）' : ''}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          disabled={locked}
+                          title={locked ? '项目经理角色的邀请只能由内部用户操作' : undefined}
+                          onClick={() => handleResend(p)}
+                        >
+                          重发
+                        </button>{' '}
+                        <button
+                          type="button"
+                          disabled={locked}
+                          title={locked ? '项目经理角色的邀请只能由内部用户操作' : undefined}
+                          onClick={() => handleCancelInvite(p)}
+                        >
+                          取消
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <p style={{ color: '#6b7280' }}>暂无待激活邀请</p>
           )}
 
           <h3>成员</h3>

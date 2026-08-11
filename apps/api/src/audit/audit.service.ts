@@ -20,6 +20,7 @@ export const AUDIT_ACTIONS = {
   MEMBER_ADD: 'member.add',
   MEMBER_DEACTIVATE: 'member.deactivate',
   MEMBER_ACTIVATE: 'member.activate',
+  MEMBER_INVITE_CANCEL: 'member.invite_cancel',
   ISSUE_CREATE: 'issue.create',
   ISSUE_UPDATE: 'issue.update',
   ISSUE_TRANSITION: 'issue.transition',

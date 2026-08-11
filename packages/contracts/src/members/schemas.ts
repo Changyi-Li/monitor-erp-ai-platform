@@ -71,3 +71,11 @@ export type MemberUpdateRequest = z.output<typeof MemberUpdateRequestSchema>;
 /** 204 No Content（与 logout 同模式） */
 export const MemberUpdateResponseSchema = z.undefined();
 export type MemberUpdateResponse = z.output<typeof MemberUpdateResponseSchema>;
+
+/**
+ * 取消邀请（issue #43）：删除待激活客户账号（客户归属与成员关系级联清除），
+ * 旧邀请链接立即失效。仅待激活邀请可取消；已激活成员走停用操作。
+ * 响应 204 No Content（与停用同模式）。
+ */
+export const MemberCancelInviteResponseSchema = z.undefined();
+export type MemberCancelInviteResponse = z.output<typeof MemberCancelInviteResponseSchema>;

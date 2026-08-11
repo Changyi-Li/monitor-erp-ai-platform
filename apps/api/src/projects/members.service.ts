@@ -280,6 +280,12 @@ export class MembersService {
       if (existingUser.isActive) {
         throw new ConflictException('该用户已是本项目成员');
       }
+      // 重发校验按已有成员行的角色（issue #43）：body.role 是请求方声明的，
+      // 客户 PM 拿 regular_user 冒充去重发 project_manager 邀请会绕过 body 检查
+      const ctx = this.tenantContext.current;
+      if (!ctx?.isInternal && existingMember.role === 'project_manager') {
+        throw new ForbiddenException('项目经理角色的邀请只能由内部用户重发');
+      }
       // 待激活成员：重发邀请链接（角色不变）
       const token = randomBytes(32).toString('base64url');
       await this.db
@@ -376,6 +382,51 @@ export class MembersService {
         metadata: { projectId, userId },
       },
     );
+  }
+
+  /**
+   * 取消邀请（issue #43）：仅待激活邀请（账号未激活且持有邀请 token）可取消——
+   * 直接删除该客户账号（user_tenants/project_members 为 DB 级联删除），
+   * 旧链接立即失效。已激活成员走停用操作（409）。
+   * 权限与成员管理一致：内部全权；客户 PM 不可操作 project_manager 角色的邀请（403）。
+   */
+  async cancelInvite(projectId: string, userId: string, actor: AuthUser): Promise<void> {
+    await this.requireManageAccess(projectId, actor);
+    const [row] = await this.db
+      .select({
+        id: projectMembers.id,
+        role: projectMembers.role,
+        userIsActive: users.isActive,
+        inviteTokenHash: users.inviteTokenHash,
+      })
+      .from(projectMembers)
+      .innerJoin(users, eq(users.id, projectMembers.userId))
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      throw new NotFoundException('该用户不是本项目成员');
+    }
+    const ctx = this.tenantContext.current;
+    if (!ctx?.isInternal && row.role === 'project_manager') {
+      throw new ForbiddenException('项目经理角色的邀请只能由内部用户取消');
+    }
+    if (row.userIsActive || !row.inviteTokenHash) {
+      throw new ConflictException('该用户已激活，不能取消邀请（如需移除请停用成员）');
+    }
+    // 删账号行：user_tenants/project_members 级联清除，所有项目里的待激活关系一并失效
+    await this.db.delete(users).where(eq(users.id, userId));
+    await this.audit.record(AUDIT_ACTIONS.MEMBER_INVITE_CANCEL, {
+      actorUserId: actor.sub,
+      actorRole: actor.role,
+      resourceType: 'project_member',
+      resourceId: row.id,
+      metadata: { projectId, userId, role: row.role },
+    });
   }
 
   private buildInviteUrl(token: string): string {

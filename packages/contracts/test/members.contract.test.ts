@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MemberCancelInviteResponseSchema,
   MemberInviteRequestSchema,
   MemberInviteResponseSchema,
   MemberSchema,
@@ -106,5 +107,13 @@ describe('members 契约：PendingInviteSchema（待激活邀请，issue #42）'
   it('拒绝非法邮箱 / 非法时间', () => {
     expect(PendingInviteSchema.safeParse({ ...validPending, email: 'nope' }).success).toBe(false);
     expect(PendingInviteSchema.safeParse({ ...validPending, expiresAt: 'yesterday' }).success).toBe(false);
+  });
+});
+
+describe('members 契约：取消邀请（issue #43）', () => {
+  it('响应为 204（undefined），与停用同模式', () => {
+    expect(MemberCancelInviteResponseSchema.safeParse(undefined).success).toBe(true);
+    expect(MemberCancelInviteResponseSchema.safeParse(null).success).toBe(false);
+    expect(MemberCancelInviteResponseSchema.safeParse({}).success).toBe(false);
   });
 });
