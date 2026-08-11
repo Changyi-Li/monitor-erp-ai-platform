@@ -342,7 +342,16 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
                         <Link href={item.href} className="has-hovered-elements">
                           <span className="module-bracket" />
                           <span className="caption">{item.caption}</span>
-                          <span className="on-hover">
+                          <span
+                            className="on-hover"
+                            title="在新标签页打开"
+                            onClick={(e) => {
+                              // 新标签页打开该程序项页面（issue #44）；阻止 Link 默认导航与冒泡
+                              e.preventDefault();
+                              e.stopPropagation();
+                              window.open(item.href, '_blank', 'noopener');
+                            }}
+                          >
                             <span className="g5icon icon-button-window-new" />
                           </span>
                           <span className="on-hover">
