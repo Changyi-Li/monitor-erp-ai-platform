@@ -79,7 +79,8 @@ Copy-Item apps\api\.env.example apps\api\.env
 # 表 owner 默认绕过 RLS，应用不用受限角色则数据隔离红线形同虚设。
 # 密码需 URL 编码（如 ! → %21）
 DATABASE_URL=postgres://app_tenant_user:<真实密码>@localhost:5432/monitor_erp
-# owner 连接：仅迁移/管理用，生产部署完可删掉；密码需 URL 编码
+# owner 连接：仅迁移/管理用，**必须保留**——deploy.bat 每次发布都跑迁移（从本变量读凭据），
+# 缺失会中止发布；密码需 URL 编码
 DATABASE_OWNER_URL=postgres://postgres:<真实密码>@localhost:5432/monitor_erp
 JWT_SECRET=<执行下面命令生成的值>
 JWT_ACCESS_TTL=15m
@@ -247,9 +248,8 @@ New-NetFirewallRule -DisplayName "Monitor Web 3000" -Direction Inbound -Protocol
 3. `pnpm install --frozen-lockfile` 安装锁定依赖
 4. `pnpm build` 全仓构建（turbo 自动按 shared → contracts → api → web 顺序，会重建 contracts 产物）
 5. **数据库表自检**（`[4.5/5]`）：运行 `docs\scripts\verify_db.ps1`，用受限角色读连接检查 27 张业务表是否齐全。任一缺失立刻中止发版并给出恢复指引（`DROP SCHEMA IF EXISTS drizzle CASCADE;` + `pnpm db:migrate`）——防止「表被清空但 drizzle 迁移记录还在」时迁移静默通过（2026-08 事故：迁移报告成功，实际一张表都没有）
-6. 重启 `monitor-api` / `monitor-web` 服务（先停后启）
-
-本次更新带数据库迁移时：取消 `deploy.bat` 中 `db:migrate` 段的注释并填入 owner 凭据（迁移必须用 owner 连接，见第四节；owner 凭据用完即清，不留驻）。迁移发生在构建后、重启服务前。
+6. **数据库迁移**（`[4.6/5]`）：**每次发版必跑**（非仅带迁移的更新）——drizzle 迁移幂等，已应用的自动跳过。脚本从 `apps\api\.env` 的 `DATABASE_OWNER_URL` 读 owner 凭据（迁移含 CREATE ROLE/GRANT，受限角色无权执行，见第四节）；凭据缺失或迁移失败**中止发版**——「新代码 + 旧库结构」的半发布状态比不发版更糟（2026-08 事故：代码已带 `description` 列查询，库没迁移，登录直接报 `column "description" does not exist`）
+7. 重启 `monitor-api` / `monitor-web` 服务（先停后启）
 
 > PM2 方式（5.1/5.2）的更新差异只有最后一步：`pm2 restart all` 即可，其余步骤相同。
 

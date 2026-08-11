@@ -34,11 +34,29 @@ rem otherwise report a successful no-op migration). Owner credentials are NOT
 rem needed: the restricted app_tenant_user is read-only enough for this.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%APP_ROOT%\docs\scripts\verify_db.ps1" -ConfigPath "%APP_ROOT%\apps\api\.env" || goto :fail
 
-rem Uncomment the three lines below when this update includes a DB migration
-rem (owner credentials required - see docs/deploy-windows.md section 4):
-rem set DATABASE_URL=postgres://postgres:YOUR_PASSWORD@localhost:5432/monitor_erp
-rem call pnpm db:migrate || goto :fail
-rem set DATABASE_URL=
+echo [4.6/5] DB migration
+rem Required on EVERY deploy, not just when an update ships a migration:
+rem drizzle migrations are idempotent (skips already-applied ones), and this
+rem step is the only thing standing between new code and the schema it needs
+rem (2026-08 incidents: code deployed without migrations -> login failed with
+rem a missing column / wiped tables). Owner credentials are read from
+rem apps/api/.env DATABASE_OWNER_URL - migrations contain CREATE ROLE/GRANT
+rem and the restricted app_tenant_user cannot run them. Missing credentials
+rem or a failed migration ABORTS the deploy: a half-deployed state (new code,
+rem old schema) is worse than no deploy.
+set DATABASE_OWNER_URL=
+for /f "usebackq tokens=1,* delims==" %%a in ("%APP_ROOT%\apps\api\.env") do (
+  if "%%a"=="DATABASE_OWNER_URL" set DATABASE_OWNER_URL=%%b
+)
+if not defined DATABASE_OWNER_URL (
+  echo DATABASE_OWNER_URL not found in apps\api\.env - aborting.
+  echo Add owner credentials (postgres://postgres:...@localhost:5432/monitor_erp)
+  echo to apps\api\.env to enable migrations. See docs/deploy-windows.md section 4.
+  goto :fail
+)
+set DATABASE_URL=%DATABASE_OWNER_URL%
+call pnpm db:migrate || goto :fail
+set DATABASE_URL=
 
 echo [5/5] Restarting services
 net stop %API_SERVICE%
