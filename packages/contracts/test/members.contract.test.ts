@@ -5,6 +5,7 @@ import {
   MemberSchema,
   MemberUpdateRequestSchema,
   MembersListResponseSchema,
+  PendingInviteSchema,
 } from '../src';
 
 const validUuid = 'b1a2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
@@ -76,7 +77,34 @@ describe('members 契约：停用/启用与列表', () => {
     expect(MemberUpdateRequestSchema.safeParse({ isActive: 'yes' }).success).toBe(false);
   });
 
-  it('列表响应为 { members: Member[] }', () => {
-    expect(MembersListResponseSchema.safeParse({ members: [validMember] }).success).toBe(true);
+  it('列表响应为 { members: Member[], pendingInvites: PendingInvite[] }（issue #42）', () => {
+    expect(MembersListResponseSchema.safeParse({ members: [validMember], pendingInvites: [] }).success).toBe(true);
+    // pendingInvites 必填：旧结构缺字段 → 拒绝
+    expect(MembersListResponseSchema.safeParse({ members: [validMember] }).success).toBe(false);
+  });
+});
+
+describe('members 契约：PendingInviteSchema（待激活邀请，issue #42）', () => {
+  const validPending = {
+    userId: validUuid,
+    email: 'alice@example.com',
+    displayName: 'Alice',
+    role: 'key_user',
+    invitedAt: validIsoDate,
+    expiresAt: '2026-08-12T02:30:00.000Z',
+  };
+
+  it('接受合法待激活邀请条目', () => {
+    expect(PendingInviteSchema.safeParse(validPending).success).toBe(true);
+  });
+
+  it('只接受三个项目角色（与 MemberSchema 一致）', () => {
+    expect(PendingInviteSchema.safeParse({ ...validPending, role: 'project_manager' }).success).toBe(true);
+    expect(PendingInviteSchema.safeParse({ ...validPending, role: 'internal' }).success).toBe(false);
+  });
+
+  it('拒绝非法邮箱 / 非法时间', () => {
+    expect(PendingInviteSchema.safeParse({ ...validPending, email: 'nope' }).success).toBe(false);
+    expect(PendingInviteSchema.safeParse({ ...validPending, expiresAt: 'yesterday' }).success).toBe(false);
   });
 });

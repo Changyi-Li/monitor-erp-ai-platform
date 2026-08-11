@@ -16,6 +16,7 @@ import {
   type MemberInviteResponse,
   type MembersListResponse,
   type MemberUpdateRequest,
+  type PendingInvite,
 } from '@monitor/contracts';
 import type { ProjectRole, UserRole } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
@@ -110,14 +111,34 @@ export class MembersService {
         createdAt: projectMembers.createdAt,
         email: users.email,
         displayName: users.displayName,
+        userIsActive: users.isActive,
+        inviteTokenHash: users.inviteTokenHash,
+        inviteExpiresAt: users.inviteExpiresAt,
       })
       .from(projectMembers)
       .innerJoin(users, eq(users.id, projectMembers.userId))
       .where(eq(projectMembers.projectId, projectId))
       .orderBy(projectMembers.createdAt);
-    return {
-      members: rows.map((r) => toMemberDto(r, r.email, r.displayName)),
-    };
+    const members: Member[] = [];
+    const pendingInvites: PendingInvite[] = [];
+    for (const r of rows) {
+      // 分组判据 = 用户账号激活状态（issue #42）：待激活 = 账号未激活且持有邀请 token；
+      // 成员停用（project_members.is_active=false）仍是真实成员，留在 members 区
+      if (!r.userIsActive && r.inviteTokenHash) {
+        pendingInvites.push({
+          userId: r.userId,
+          email: r.email,
+          displayName: r.displayName,
+          role: r.role as ProjectRole,
+          invitedAt: r.createdAt.toISOString(),
+          // 持有 token 必有过期时间（invite()/重发均设置）；异常数据（手工/遗留）防御回退为已过期
+          expiresAt: r.inviteExpiresAt?.toISOString() ?? new Date(0).toISOString(),
+        });
+      } else {
+        members.push(toMemberDto(r, r.email, r.displayName));
+      }
+    }
+    return { members, pendingInvites };
   }
 
   /**

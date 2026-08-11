@@ -17,8 +17,30 @@ export const MemberSchema = z.object({
 });
 export type Member = z.output<typeof MemberSchema>;
 
+/**
+ * 待激活邀请（issue #42）：已发邀请链接但用户未点击设密激活的账号。
+ * 判据 = 用户账号未激活且持有邀请 token（members 中的停用成员不在此列）。
+ * userId 供重发/取消邀请（#43）定位账号。
+ */
+export const PendingInviteSchema = z.object({
+  userId: z.uuid(),
+  email: z.email(),
+  displayName: z.string().trim().min(1).max(64),
+  role: z.enum(PROJECT_ROLES),
+  /** 首次邀请时间（成员行创建时间） */
+  invitedAt: z.iso.datetime(),
+  /** 邀请过期时间（7 天；过期后由清理 worker 删除，链接失效） */
+  expiresAt: z.iso.datetime(),
+});
+export type PendingInvite = z.output<typeof PendingInviteSchema>;
+
+/**
+ * 成员列表分两类（issue #42）：members = 真实成员（已设密激活，含停用成员）；
+ * pendingInvites = 待激活邀请（已发链接、未点击设密）。
+ */
 export const MembersListResponseSchema = z.object({
   members: z.array(MemberSchema),
+  pendingInvites: z.array(PendingInviteSchema),
 });
 export type MembersListResponse = z.output<typeof MembersListResponseSchema>;
 
