@@ -38,10 +38,11 @@ function filterCategories(
  * （styles-25UOYN5D.css + 组件 chunk）：尺寸、配色、hover/选中态与原版一致。
  *
  * 模块切换（#32）：菜单数据来自 ../data/monitor-menu.ts（模块 → 分类 → 程序项，
- * 平台功能分门别类）；点击模块高亮并联动侧边菜单，再点当前模块取消选中回默认视图。
- * 模块路由感知（#36）：进入页面自动激活所属模块（数据驱动反查菜单，如 /users → basicdata），
- * 类名 active + 实心图标 + 竖线变粗；侧边菜单保持收起（原版 app-navigation-menu 行为），
- * 点击模块才展开，与点击行为共用同一选中态。
+ * 平台功能分门别类）；点击模块高亮并联动侧边菜单。
+ * 模块路由感知（#36）：active 态完全由路由决定（数据驱动反查菜单，如 /users → basicdata，
+ * 前缀匹配覆盖子路径如 /projects/123）——类名 active + 实心图标 + 竖线变粗 + 顶栏
+ * module-indicator 模块色；侧边菜单自动展开显示程序项（验收），点 active 模块收起。
+ * 点击模块按钮只切换菜单内容/开合，不改变 active 态（跳转到该模块页面才变色，用户确认）。
  * 「查找程序」实时过滤由 #35 实现；顶栏 Monitor 搜索（#34 实现）暂隐藏；主题切换 #33。
  *
  * 登录/注册页为全屏认证布局（issue #29），此框架不渲染（与旧 Topbar 行为一致）。
@@ -177,24 +178,33 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   }, [status, pathname, router]);
 
   // 路由 → 模块反查（issue #36）：遍历模块菜单数据，当前路径命中的程序项所属模块
-  // 即为 active 模块。数据驱动，新增页面无需硬编码映射（/ → 默认视图，无模块）。
+  // 即为 active 模块。前缀匹配（href 或 href/子路径）——动态路由如 /projects/123、
+  // /kb/[documentId] 同样激活所属模块；数据驱动，新增页面无需硬编码映射
+  // （/ → 默认视图，无模块）。
   // 注意：必须放在认证页早 return 之前——否则 /login → /users 切换时
   // hooks 顺序变化（React Rules of Hooks 报错）
   const routeModuleKey = useMemo(() => {
     for (const m of monitorModules) {
       for (const cat of m.categories) {
-        if (cat.items.some((i) => i.href === pathname)) return m.key;
+        if (
+          cat.items.some((i) => pathname === i.href || pathname.startsWith(i.href + '/'))
+        ) {
+          return m.key;
+        }
       }
     }
     return null;
   }, [pathname]);
 
-  // 路由感知激活（issue #36）：进入页面自动选中所属模块（原版 app-navigation-menu
-  // 行为：模块 active 但侧边菜单保持收起，菜单需手动点模块展开）。仅当路由变化时
-  // 触发——用户手动收起（点 active 模块）后保持收起，刷新页面重新激活
+  // 路由感知激活（issue #36 验收）：进入页面自动选中所属模块并展开侧边菜单
+  // （验收：访问 /users → basicdata active + 菜单展开显示程序项；点 active 模块
+  // 收起菜单形成展开↔收起循环）。仅当模块归属变化时触发——用户手动收起后，
+  // 同模块内点程序项（路由变但模块不变）不强制重开；刷新页面重新激活。
+  // 这里同时把菜单模块同步为 active 模块（active 由路由决定，点击模块按钮不改变它）
   useEffect(() => {
     if (routeModuleKey) {
       setSelectedModuleKey(routeModuleKey);
+      setMenuOpen(true);
     }
   }, [routeModuleKey]);
 
@@ -206,6 +216,13 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     router.push('/login');
   }
 
+  // active 模块由路由决定（#36）：模块按钮高亮 + 顶栏 indicator 颜色跟随路由，
+  // 与用户点击的菜单模块（selectedModuleKey）解耦——点击模块按钮只换菜单内容，
+  // 不改变 active 态（用户确认的行为：跳转才变色）
+  const activeModule =
+    monitorModules.find((m) => m.key === routeModuleKey) ?? null;
+  // 菜单模块：用户点击模块按钮后菜单显示哪个模块的程序项（默认跟随 active 模块，
+  // 路由变化时由下方 useEffect 同步）
   const selectedModule =
     monitorModules.find((m) => m.key === selectedModuleKey) ?? null;
 
@@ -225,11 +242,14 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
 
   function handleModuleClick(m: MonitorModule) {
     if (selectedModuleKey === m.key) {
-      // 再点当前模块 → 仅收起菜单（原版 toggleSidebar 的 toggle 分支）。
-      // 注意：不取消选中——active 由路由决定（#36），页面还在该模块下，收起≠失活
-      setMenuOpen(false);
+      // 再点当前菜单模块 → 收起 ↔ 展开（toggle，原版 toggleSidebar 的 toggle 分支）。
+      // 注意：不取消选中——active 由路由决定（#36），页面还在该模块下，收起≠失活，
+      // 因此必须用函数式 toggle 而不是 setMenuOpen(false)（否则收起后无法再展开）
+      setMenuOpen((open) => !open);
     } else {
-      // 点其他模块 → 选中并展开菜单（原版 toggleSidebar 的 open 分支）
+      // 点其他模块 → 菜单切换到该模块程序项并展开（原版 toggleSidebar 的 open 分支）。
+      // 注意：不改变 active 态——模块按钮高亮/indicator 颜色由路由决定（#36 用户确认：
+      // 在 /users 点 sales 只换菜单，跳转 /customers 才变绿）
       setSelectedModuleKey(m.key);
       setMenuOpen(true);
     }
@@ -251,7 +271,7 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
           {monitorModules.map((m) => (
             <div
               key={m.key}
-              className={`module ${m.key}${selectedModuleKey === m.key ? ' active' : ''}`}
+              className={`module ${m.key}${activeModule?.key === m.key ? ' active' : ''}`}
               style={{ '--module-color': m.color } as CSSProperties}
               title={m.title}
               data-testid="module"
@@ -259,7 +279,7 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
             >
               {/* active 模块用实心图标（原版：icon-module-<key> 无 -o 后缀） */}
               <span
-                className={`g5icon icon-module-${m.key}${selectedModuleKey === m.key ? '' : '-o'}`}
+                className={`g5icon icon-module-${m.key}${activeModule?.key === m.key ? '' : '-o'}`}
               />
             </div>
           ))}
@@ -347,7 +367,12 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
         <div className="background-fade" />
         <header className="monitor-toolbar">
           <div className="status-container-wrapper">
-            <span className="module-indicator" data-testid="module-indicator" />
+            {/* 模块指示器（issue #36 验收）：active 由路由决定，跳转后显示对应模块色
+                （globals.css）；点击模块按钮不跳转 → 保持当前模块色 */}
+            <span
+              className={`module-indicator${activeModule ? ` ${activeModule.key}` : ''}`}
+              data-testid="module-indicator"
+            />
             <div className="status-container" data-testid="desktopCaption">
               <span>Monitor ERP AI Platform | {user ? `${user.displayName} · ${userRoleLabel(user.role)}` : '未登录'}</span>
             </div>

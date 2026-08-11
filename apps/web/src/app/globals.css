@@ -679,6 +679,40 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   height: 20px;
   visibility: hidden;
 }
+/* 模块路由感知（#36）：进入模块页面时 module-indicator 显示对应模块色（原版同构规则，
+   每模块一条，特异性高于上方 visibility:hidden 默认；customreports 用 --mwc-module-custom） */
+.monitor-toolbar .status-container-wrapper .module-indicator.manufacturing {
+  visibility: visible;
+  background-color: var(--mwc-module-manufacturing);
+}
+.monitor-toolbar .status-container-wrapper .module-indicator.purchase {
+  visibility: visible;
+  background-color: var(--mwc-module-purchase);
+}
+.monitor-toolbar .status-container-wrapper .module-indicator.sales {
+  visibility: visible;
+  background-color: var(--mwc-module-sales);
+}
+.monitor-toolbar .status-container-wrapper .module-indicator.stock {
+  visibility: visible;
+  background-color: var(--mwc-module-stock);
+}
+.monitor-toolbar .status-container-wrapper .module-indicator.timerecording {
+  visibility: visible;
+  background-color: var(--mwc-module-timerecording);
+}
+.monitor-toolbar .status-container-wrapper .module-indicator.accounting {
+  visibility: visible;
+  background-color: var(--mwc-module-accounting);
+}
+.monitor-toolbar .status-container-wrapper .module-indicator.basicdata {
+  visibility: visible;
+  background-color: var(--mwc-module-basicdata);
+}
+.monitor-toolbar .status-container-wrapper .module-indicator.customreports {
+  visibility: visible;
+  background-color: var(--mwc-module-custom);
+}
 .monitor-toolbar .status-container {
   display: flex;
   flex-direction: row;
