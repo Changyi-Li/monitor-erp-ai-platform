@@ -44,19 +44,12 @@ rem apps/api/.env DATABASE_OWNER_URL - migrations contain CREATE ROLE/GRANT
 rem and the restricted app_tenant_user cannot run them. Missing credentials
 rem or a failed migration ABORTS the deploy: a half-deployed state (new code,
 rem old schema) is worse than no deploy.
-set DATABASE_OWNER_URL=
-for /f "usebackq tokens=1,* delims==" %%a in ("%APP_ROOT%\apps\api\.env") do (
-  if "%%a"=="DATABASE_OWNER_URL" set DATABASE_OWNER_URL=%%b
-)
-if not defined DATABASE_OWNER_URL (
-  echo DATABASE_OWNER_URL not found in apps\api\.env - aborting.
-  echo Add owner credentials (postgres://postgres:...@localhost:5432/monitor_erp)
-  echo to apps\api\.env to enable migrations. See docs/deploy-windows.md section 4.
-  goto :fail
-)
-set DATABASE_URL=%DATABASE_OWNER_URL%
-call pnpm db:migrate || goto :fail
-set DATABASE_URL=
+rem The .env parse runs inside run_migration.ps1 (PowerShell), not in cmd: a
+rem cmd for /f parenthesized block misparsed under LF line endings on the
+rem server and reported DATABASE_OWNER_URL as "not defined" although the key
+rem existed, silently disabling this step (issue #47). .gitattributes now
+rem pins *.bat to CRLF as well.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%APP_ROOT%\docs\scripts\run_migration.ps1" -ConfigPath "%APP_ROOT%\apps\api\.env" || goto :fail
 
 echo [5/5] Restarting services
 net stop %API_SERVICE%
@@ -68,4 +61,5 @@ exit /b 0
 
 :fail
 echo Step failed with errorlevel %ERRORLEVEL%
+if exist "%APP_ROOT%\docs\scripts\recover_db.ps1" echo DB recovery if the failure is DB-related: powershell -NoProfile -ExecutionPolicy Bypass -File "%APP_ROOT%\docs\scripts\recover_db.ps1"
 exit /b 1

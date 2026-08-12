@@ -1,0 +1,8 @@
+# Deploy scripts are consumed by cmd (deploy.bat) and Windows PowerShell 5.1.
+# Batch files with LF line endings misparse inside parenthesized blocks on
+# Windows cmd - the server's deploy.bat [4.6/5] repeatedly reported
+# DATABASE_OWNER_URL as "not defined" although the key existed, with LF line
+# endings the prime suspect (issue #47). Pin both to CRLF so a checkout
+# (git pull on the server) can never reintroduce LF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
