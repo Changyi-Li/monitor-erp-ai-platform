@@ -26,17 +26,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Shared helpers (Get-EnvValue / Invoke-Psql) live in ps-lib.ps1 - one
+# implementation for all docs/scripts (issue #47 AC3). $envLines and $psqlExe
+# are set below before the functions are called.
+. "$PSScriptRoot\ps-lib.ps1"
+
 # ---- 1. read DATABASE_URL + optional DATABASE_OWNER_URL from .env ----
 if (-not (Test-Path $ConfigPath)) {
   Write-Host "[verify_db] FAIL: .env not found at $ConfigPath" -ForegroundColor Red
   exit 2
 }
 $envLines = @(Get-Content $ConfigPath)
-function Get-EnvValue([string]$key) {
-  $line = $envLines | Where-Object { $_ -match "^$key=" } | Select-Object -First 1
-  if (-not $line) { return $null }
-  return (($line -split '=', 2)[1]).Trim().Trim('"').Trim("'")
-}
 $dbUrl = Get-EnvValue 'DATABASE_URL'
 if (-not $dbUrl) {
   Write-Host "[verify_db] FAIL: DATABASE_URL not found in $ConfigPath" -ForegroundColor Red
@@ -115,12 +115,12 @@ Write-Host "[verify_db] Checking tables in database '$dbName'..."
 # non-option argument as DBNAME and silently ignores everything after it
 # ("ignoring extra command-line argument" warning, query never runs).
 # --dbname= is explicit to avoid any positional ambiguity.
-$out = & $psqlExe -t -A --dbname=$dbUrl -c "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public';" 2>&1
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "[verify_db] FAIL: cannot connect / query database: $($out -join ' ')" -ForegroundColor Red
+$r = Invoke-Psql $dbUrl "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public';"
+if ($r.Code -ne 0) {
+  Write-Host "[verify_db] FAIL: cannot connect / query database: $($r.Out -join ' ')" -ForegroundColor Red
   exit 2
 }
-$existing = @($out | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+$existing = @($r.Out | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
 
 # ---- 5. compare against required list ----
 $missing = @($RequiredTables | Where-Object { $_ -notin $existing })
@@ -136,12 +136,12 @@ $missing | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
 # 6a. journal state via owner connection (app role may not read drizzle schema)
 $journalState = 'unknown'
 if ($ownerUrl) {
-  $nsOut = & $psqlExe -t -A --dbname=$ownerUrl -c "SELECT 1 FROM pg_namespace WHERE nspname='drizzle';" 2>&1
-  if ($LASTEXITCODE -eq 0 -and $nsOut.Trim()) {
-    $tblOut = (& $psqlExe -t -A --dbname=$ownerUrl -c "SELECT to_regclass('drizzle.__drizzle_migrations');" 2>&1).Trim()
-    if ($tblOut -match '__drizzle_migrations') {
-      $cnt = (& $psqlExe -t -A --dbname=$ownerUrl -c "SELECT count(*) FROM drizzle.__drizzle_migrations;" 2>&1).Trim()
-      $journalState = "journal-survived:$cnt"
+  $r = Invoke-Psql $ownerUrl "SELECT 1 FROM pg_namespace WHERE nspname='drizzle';"
+  if ($r.Code -eq 0 -and ($r.Out -join ' ').Trim()) {
+    $r = Invoke-Psql $ownerUrl "SELECT to_regclass('drizzle.__drizzle_migrations');"
+    if (($r.Out -join ' ').Trim() -match '__drizzle_migrations') {
+      $r = Invoke-Psql $ownerUrl "SELECT count(*) FROM drizzle.__drizzle_migrations;"
+      $journalState = "journal-survived:$($r.Out -join ' ')"
     } else {
       $journalState = 'schema-only'
     }
@@ -163,21 +163,21 @@ if ($ownerUrl) {
 
 # 6c. recovery guidance matching the measured state
 Write-Host "Measured state: $journalState" -ForegroundColor Cyan
-switch ($journalState) {
+switch -Wildcard ($journalState) {
   'journal-survived*' {
     Write-Host "Cause: migration journal survived while business tables were wiped - drizzle would skip all migrations." -ForegroundColor Yellow
-    Write-Host "Fix: 1) DROP SCHEMA IF EXISTS drizzle CASCADE;" -ForegroundColor Yellow
-    Write-Host "     2) run 'pnpm db:migrate' with owner credentials (DATABASE_OWNER_URL)." -ForegroundColor Yellow
-    Write-Host "     One-command recovery: powershell -File docs\scripts\recover_db.ps1" -ForegroundColor Yellow
+    Write-Host "Fix (one command): powershell -File docs\scripts\recover_db.ps1" -ForegroundColor Yellow
+    Write-Host "     (it wipes the journal and any remaining public tables, then re-runs all migrations)" -ForegroundColor Yellow
   }
   'schema-only' {
     Write-Host "Cause: drizzle schema exists but the migration history table is missing - state is inconsistent." -ForegroundColor Yellow
-    Write-Host "Fix: 1) DROP SCHEMA IF EXISTS drizzle CASCADE;" -ForegroundColor Yellow
-    Write-Host "     2) run 'pnpm db:migrate' with owner credentials (DATABASE_OWNER_URL)." -ForegroundColor Yellow
+    Write-Host "Fix (one command): powershell -File docs\scripts\recover_db.ps1" -ForegroundColor Yellow
+    Write-Host "     (it wipes the journal and any remaining public tables, then re-runs all migrations)" -ForegroundColor Yellow
   }
   'no-drizzle-schema' {
     Write-Host "Cause: no drizzle schema - migrations have never been applied to this database." -ForegroundColor Yellow
-    Write-Host "Fix: run 'pnpm db:migrate' with owner credentials (DATABASE_OWNER_URL) - no DROP needed." -ForegroundColor Yellow
+    Write-Host "Fix (one command): powershell -File docs\scripts\recover_db.ps1" -ForegroundColor Yellow
+    Write-Host "     (it wipes any partial tables, then re-runs all migrations)" -ForegroundColor Yellow
   }
   'unknown-no-owner-url' {
     Write-Host "Note: DATABASE_OWNER_URL is not set in $ConfigPath - journal diagnostics skipped." -ForegroundColor Yellow
