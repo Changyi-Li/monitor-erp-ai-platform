@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { ReactNode } from 'react';
+import { UpdateUserResponseSchema } from '@monitor/contracts';
 import type { UserRole } from '@monitor/shared';
+import { apiFetch, errorMessage } from '../lib/api';
 import { getBackgroundImage } from '../lib/background-image';
 import { isPlatformRole, userRoleLabel } from '../lib/roles';
 import { useAuth } from './auth-provider';
@@ -49,7 +51,7 @@ function filterCategories(
  * 自助注册已关闭（AUTH_SELF_REGISTER=false），无 /register 页面。
  */
 export function MonitorFrame({ children }: { children: ReactNode }) {
-  const { user, status, logout } = useAuth();
+  const { user, status, logout, refresh } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -66,12 +68,12 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   // 内容区背景：复用会话内共享图（登录页随机后写入；无值时随机一张）——
   // 原版 BackgroundImageService 单例行为：登录时选中哪张，主界面就显示哪张，
   // 只有整页刷新（模块重载）才随机下一张。用 useEffect 避免 SSR/hydration 不一致。
-  // 注意：本组件在 /login 下也挂载（仅 return children），认证路径必须
+  // 注意：本组件在 /login、/invite 下也挂载（仅 return children），认证路径必须
   // 跳过读取，否则会先于登录页 layout 随机抢图污染共享状态；随 pathname 变化重读，
   // 保证登录后主界面复用登录页那张
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   useEffect(() => {
-    if (pathname === '/login') return;
+    if (pathname === '/login' || pathname === '/invite') return;
     setBackgroundImage(getBackgroundImage());
   }, [pathname]);
 
@@ -171,9 +173,15 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
   }, [userMenuOpen]);
 
   // 未登录访问受保护页面 → 直接跳登录页（刷新后登录态丢失的场景），
-  // 不在主界面停留显示欢迎词；登录页自身不跳转（避免死循环）
+  // 不在主界面停留显示欢迎词；登录页自身不跳转（避免死循环）。
+  // /invite 是公开页（邀请链接的目标用户必然未登录）——豁免重定向，否则
+  // 点开邀请链接被弹回登录页（grilling 发现 #52 遗留缺口）
   useEffect(() => {
-    if (status === 'unauthenticated' && pathname !== '/login') {
+    if (
+      status === 'unauthenticated' &&
+      pathname !== '/login' &&
+      pathname !== '/invite'
+    ) {
       router.replace('/login');
     }
   }, [status, pathname, router]);
@@ -209,12 +217,48 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
     }
   }, [routeModuleKey]);
 
-  // 认证页全屏展示，不渲染主框架
-  if (pathname === '/login') return <>{children}</>;
+  // 修改昵称 state（grilling：任何登录用户可改自己，含客户用户——用户菜单入口）。
+  // 必须放在认证页早 return 之前（同 routeModuleKey 注释）：/login、/invite 渲染
+  // 提前 return，若 state 在 return 之后声明则 hooks 顺序随路由切换变化（React 报错）
+  const [nicknameModal, setNicknameModal] = useState(false);
+  const [nicknameDraft, setNicknameDraft] = useState('');
+  const [nicknameSaving, setNicknameSaving] = useState(false);
+  const [nicknameError, setNicknameError] = useState('');
+
+  // 认证页与邀请页全屏展示，不渲染主框架（/invite 是公开页，自带 mwc 外壳）
+  if (pathname === '/login' || pathname === '/invite') return <>{children}</>;
 
   async function handleLogout() {
     await logout();
     router.push('/login');
+  }
+
+  function openNicknameModal() {
+    setUserMenuOpen(false);
+    setNicknameDraft(user?.displayName ?? '');
+    setNicknameError('');
+    setNicknameModal(true);
+  }
+
+  async function handleNicknameSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !nicknameDraft.trim()) return;
+    setNicknameError('');
+    setNicknameSaving(true);
+    try {
+      // 本人改自己：目标鉴权（改别人仅超管）由后端 service 判定
+      await apiFetch(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        body: { displayName: nicknameDraft.trim() },
+        schema: UpdateUserResponseSchema,
+      });
+      await refresh();
+      setNicknameModal(false);
+    } catch (err) {
+      setNicknameError(errorMessage(err));
+    } finally {
+      setNicknameSaving(false);
+    }
   }
 
   // active 模块由路由决定（#36）：模块按钮高亮 + 顶栏 indicator 颜色跟随路由，
@@ -455,6 +499,14 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
                           <span className="user-menu-role">{userRoleLabel(user.role)}</span>
                           <span className="user-menu-email">{user.email}</span>
                         </div>
+                        {/* 修改昵称（grilling）：所有登录用户可改自己，含客户用户 */}
+                        <button
+                          type="button"
+                          className="user-menu-item"
+                          onClick={openNicknameModal}
+                        >
+                          修改昵称
+                        </button>
                         <button type="button" className="user-menu-item" onClick={handleLogout}>
                           登出
                         </button>
@@ -475,6 +527,60 @@ export function MonitorFrame({ children }: { children: ReactNode }) {
         </header>
         <main className="monitor-main">{children}</main>
       </div>
+
+      {/* 修改昵称弹窗（grilling）：mwc 卡片质感（同 users 页 .up-modal 风格） */}
+      {nicknameModal && (
+        <div className="frame-modal-backdrop" onClick={() => setNicknameModal(false)}>
+          <div
+            className="frame-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="修改昵称"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="frame-modal-header">
+              <div className="frame-modal-title">修改昵称</div>
+              <button
+                type="button"
+                className="icon-button-action"
+                onClick={() => setNicknameModal(false)}
+                aria-label="关闭"
+              >
+                <i className="fa-solid fa-xmark fs-3 color-primary" aria-hidden="true" />
+              </button>
+            </div>
+            <form onSubmit={handleNicknameSave} className="frame-modal-body">
+              <input
+                value={nicknameDraft}
+                onChange={(e) => setNicknameDraft(e.target.value)}
+                maxLength={64}
+                className="frame-modal-input"
+                autoFocus
+                aria-label="新昵称"
+              />
+              <p className="frame-modal-hint">
+                昵称显示在顶栏与用户列表中；同一昵称不可重复使用
+              </p>
+              {nicknameError && <p className="frame-modal-error">{nicknameError}</p>}
+              <div className="frame-modal-actions">
+                <button
+                  type="submit"
+                  className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                  disabled={
+                    nicknameSaving ||
+                    !nicknameDraft.trim() ||
+                    nicknameDraft.trim() === user?.displayName
+                  }
+                >
+                  <span className="dx-button-text">
+                    {nicknameSaving ? '保存中…' : '保存'}
+                  </span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CreateUserResponseSchema,
   CustomerCreateResponseSchema,
+  ResendInviteResponseSchema,
   ResetUserPasswordResponseSchema,
   UpdateUserResponseSchema,
   UsersListResponseSchema,
   type CreateUserResponse,
   type CustomerCreateResponse,
+  type ResendInviteResponse,
   type UpdateUserResponse,
   type UserAdmin,
   type UsersListResponse,
@@ -27,7 +29,7 @@ import type { UserRole } from '@monitor/shared';
  * 建内部用户（US-3）与建客户表单保留在「管理操作」工具区（超管专属）。
  */
 export default function UsersPage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const [data, setData] = useState<UsersListResponse | null>(null);
   const [error, setError] = useState('');
 
@@ -58,11 +60,31 @@ export default function UsersPage() {
   // 左侧列表按昵称搜索（#37 迭代：昵称唯一，支持搜索）
   const [nameQuery, setNameQuery] = useState('');
 
+  // 账号列表 accordion 分组（grilling）：客户用户 / 内部与管理员，组头点击展开收起
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    customer: true,
+    platform: true,
+  });
+
+  // 未激活客户邀请链接重发（grilling：链接再发放）——选中用户变化时复位
+  const [resend, setResend] = useState<ResendInviteResponse | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendError, setResendError] = useState('');
+  const [resendCopied, setResendCopied] = useState(false);
+
+  // 昵称编辑草稿（grilling：通用页签可编辑；本人或超管）
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [displayNameSaving, setDisplayNameSaving] = useState(false);
+  const [displayNameSaveOk, setDisplayNameSaveOk] = useState('');
+  const [displayNameSaveError, setDisplayNameSaveError] = useState('');
+
   // 管理操作（建内部用户/建客户，超管专属，US-3）
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
-  const [created, setCreated] = useState<CustomerCreateResponse | null>(null);
-  const [form, setForm] = useState({ name: '', industry: '', region: '' });
+  // 创建客户成功弹窗（#51）：存响应（含 inviteUrl）+ 绑定邮箱；null = 关闭
+  const [inviteModal, setInviteModal] = useState<{ res: CustomerCreateResponse; email: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [form, setForm] = useState({ name: '', email: '', industry: '', region: '' });
   const [userForm, setUserForm] = useState({
     email: '',
     displayName: '',
@@ -96,10 +118,20 @@ export default function UsersPage() {
     return list.filter((u) => u.displayName.toLowerCase().includes(q));
   }, [data, nameQuery]);
 
+  // accordion 分组（grilling）：客户用户 vs 内部与管理员（超管归内部组）
+  const groupedUsers = useMemo(
+    () => ({
+      customer: filteredUsers.filter((u) => u.role === 'customer'),
+      platform: filteredUsers.filter((u) => u.role !== 'customer'),
+    }),
+    [filteredUsers],
+  );
+
   // 选中用户变化 → 描述/角色草稿同步（避免保存旧用户残留）+ 重置密码状态清零
   useEffect(() => {
     setDescriptionDraft(selectedUser?.description ?? '');
     setRoleDraft(selectedUser?.role ?? 'internal');
+    setDisplayNameDraft(selectedUser?.displayName ?? '');
     setSaveOk('');
     setSaveError('');
     setRoleSaveOk('');
@@ -107,6 +139,11 @@ export default function UsersPage() {
     setResetPw('');
     setResetError('');
     setResetOk('');
+    // 邀请链接重发结果跟随选中用户，切换即清空
+    setResend(null);
+    setResendError('');
+    setResendCopied(false);
+    setDisplayNameSaveOk('');
   }, [selectedUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSuperAdmin = user?.role === 'super_admin';
@@ -226,26 +263,108 @@ export default function UsersPage() {
   async function handleCreateCustomer(e: React.FormEvent) {
     e.preventDefault();
     setCreateError('');
-    setCreated(null);
     setCreating(true);
     try {
       const res = await apiFetch('/api/customers', {
         method: 'POST',
         body: {
           name: form.name,
+          email: form.email,
           industry: form.industry || undefined,
           region: form.region || undefined,
         },
         schema: CustomerCreateResponseSchema,
       });
-      setCreated(res);
-      setForm({ name: '', industry: '', region: '' });
+      setInviteModal({ res, email: form.email });
+      setForm({ name: '', email: '', industry: '', region: '' });
     } catch (err) {
       setCreateError(errorMessage(err));
     } finally {
       setCreating(false);
     }
   }
+
+  // 复制邀请链接（#51）：成功图标切对勾，1.6s 复位
+  async function handleCopy() {
+    if (!inviteModal) return;
+    try {
+      await navigator.clipboard.writeText(inviteModal.res.inviteUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // 剪贴板不可用（非 HTTPS 等）：静默失败，链接可手动选中复制
+    }
+  }
+
+  /** 昵称编辑（grilling）：本人或超管；保存后同步列表；改自己 → 刷新顶栏昵称 */
+  async function handleSaveDisplayName(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedUser || !displayNameDraft.trim()) return;
+    if (displayNameDraft.trim() === selectedUser.displayName) return;
+    setDisplayNameSaveOk('');
+    setDisplayNameSaving(true);
+    try {
+      const res = await apiFetch(`/api/users/${selectedUser.id}`, {
+        method: 'PATCH',
+        body: { displayName: displayNameDraft.trim() },
+        schema: UpdateUserResponseSchema,
+      });
+      setData((cur) =>
+        cur
+          ? { users: cur.users.map((u) => (u.id === res.user.id ? res.user : u)) }
+          : cur,
+      );
+      if (selectedUser.id === user?.id) {
+        await refresh();
+      }
+      setDisplayNameSaveOk('昵称已更新');
+    } catch (err) {
+      setDisplayNameSaveError(errorMessage(err));
+    } finally {
+      setDisplayNameSaving(false);
+    }
+  }
+
+  /** 重发客户邀请（grilling）：重新生成 token——旧链接立即失效，有效期刷新 7 天 */
+  async function handleResend() {
+    if (!selectedUser) return;
+    setResendError('');
+    setResending(true);
+    try {
+      const res = await apiFetch(`/api/users/${selectedUser.id}/resend-invite`, {
+        method: 'POST',
+        schema: ResendInviteResponseSchema,
+      });
+      setResend(res);
+      setResendCopied(false);
+    } catch (err) {
+      setResendError(errorMessage(err));
+    } finally {
+      setResending(false);
+    }
+  }
+
+  /** 复制重发后的邀请链接（grilling）：成功图标切对勾，1.6s 复位 */
+  async function handleResendCopy() {
+    if (!resend) return;
+    try {
+      await navigator.clipboard.writeText(resend.inviteUrl);
+      setResendCopied(true);
+      setTimeout(() => setResendCopied(false), 1600);
+    } catch {
+      // 剪贴板不可用（非 HTTPS 等）：静默失败，链接可手动选中复制
+    }
+  }
+
+  // Esc 关闭弹窗（#51）：关闭按钮 / 遮罩点击 / Esc 三种方式
+  useEffect(() => {
+    if (!inviteModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInviteModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [inviteModal]);
 
   // 输入框样式走 CSS 类 .up-input（原版 dx-editor-filled：浅灰填充底 +
   // 细边框，hover/focus 变主色，见 globals.css .users-page 块）
@@ -272,26 +391,67 @@ export default function UsersPage() {
               className="up-search"
             />
           </div>
+          {/* 账号列表（grilling accordion 分组）：客户用户 vs 内部与管理员，
+              组头 = 原版树形折叠样式（箭头 + 分组名 + 计数），点击展开/收起；
+              搜索关键字时两组自动展开（Monitor 树形搜索语义：展示匹配） */}
           <ul className="up-list" style={{ maxHeight: 380, overflowY: 'auto' }}>
             {filteredUsers.length === 0 ? (
               <li className="up-item-sub" style={{ padding: 12 }}>
                 {nameQuery.trim() ? '无匹配昵称' : '暂无账号'}
               </li>
             ) : (
-              filteredUsers.map((u) => (
-                <li key={u.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(u.id)}
-                    className={`up-item${selectedId === u.id ? ' selected' : ''}`}
-                  >
-                    <div className="up-item-name">{u.displayName}</div>
-                    <div className="up-item-sub">
-                      {u.email} · {userRoleLabel(u.role)}
-                    </div>
-                  </button>
-                </li>
-              ))
+              (
+                [
+                  ['customer', '客户用户', groupedUsers.customer],
+                  ['platform', '内部与管理员', groupedUsers.platform],
+                ] as const
+              ).map(([key, label, users]) => {
+                const open = nameQuery.trim() !== '' || openGroups[key];
+                return (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      className="up-acc-header"
+                      onClick={() =>
+                        setOpenGroups((g) => ({ ...g, [key]: !g[key] }))
+                      }
+                      aria-expanded={open}
+                    >
+                      <i
+                        className={`fa-solid fa-chevron-right up-acc-chevron${open ? ' open' : ''}`}
+                        aria-hidden="true"
+                      />
+                      <span className="up-acc-label">{label}</span>
+                      <span className="up-acc-count">{users.length}</span>
+                    </button>
+                    {open && (
+                      <ul className="up-acc-body">
+                        {users.length === 0 ? (
+                          <li className="up-item-sub" style={{ padding: '6px 12px' }}>
+                            无匹配账号
+                          </li>
+                        ) : (
+                          users.map((u) => (
+                            <li key={u.id}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedId(u.id)}
+                                className={`up-item${selectedId === u.id ? ' selected' : ''}`}
+                              >
+                                <div className="up-item-name">{u.displayName}</div>
+                                <div className="up-item-sub">
+                                  {u.email} · {userRoleLabel(u.role)}
+                                  {u.role === 'customer' && !u.isActive ? ' · 未激活' : ''}
+                                </div>
+                              </button>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })
             )}
           </ul>
         </aside>
@@ -352,6 +512,94 @@ export default function UsersPage() {
                 </div>
               </form>
 
+              {/* 邀请链接重发（grilling：客户丢失链接 → 重新生成 + 复制）。
+                  仅超管可见；重发语义 = 旧链接立即失效、有效期刷新 7 天 */}
+              {isSuperAdmin &&
+                selectedUser.role === 'customer' &&
+                !selectedUser.isActive &&
+                selectedUser.inviteKind === 'customer' && (
+                <div className="up-card" style={{ marginTop: 12 }}>
+                  <div className="up-card-title">邀请链接（账号未激活）</div>
+                  <div className="up-card-body">
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: 13,
+                        color: 'var(--mwc-text-light)',
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      该客户联系人尚未激活账号。邀请链接 7 天内有效，绑定{' '}
+                      {selectedUser.email}。客户丢失链接时可重新生成——
+                      旧链接立即失效，有效期重新计算。
+                    </p>
+                    {!resend ? (
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        disabled={resending}
+                        className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                        style={{ marginTop: 10 }}
+                      >
+                        <span className="dx-button-text">
+                          {resending ? '生成中…' : '重新生成链接'}
+                        </span>
+                      </button>
+                    ) : (
+                      <>
+                        <div className="up-invite-row" style={{ marginTop: 10 }}>
+                          <input
+                            readOnly
+                            value={resend.inviteUrl}
+                            className="up-input"
+                            aria-label="邀请链接"
+                            onFocus={(e) => e.currentTarget.select()}
+                          />
+                          <button
+                            type="button"
+                            className="icon-button-action"
+                            aria-label={resendCopied ? '已复制' : '复制链接'}
+                            title="复制链接"
+                            onClick={handleResendCopy}
+                          >
+                            <i
+                              className={`fa-solid ${resendCopied ? 'fa-check' : 'fa-copy'} fs-3 ${resendCopied ? 'color-success-strong' : 'color-primary'}`}
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: 'var(--mwc-text-light)',
+                            marginTop: 6,
+                          }}
+                        >
+                          有效期至{' '}
+                          {new Date(resend.expiresAt).toLocaleString()}；旧链接已失效
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleResend}
+                          disabled={resending}
+                          className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                          style={{ marginTop: 10 }}
+                        >
+                          <span className="dx-button-text">
+                            {resending ? '生成中…' : '再次重新生成'}
+                          </span>
+                        </button>
+                      </>
+                    )}
+                    {resendError && (
+                      <p className="up-error" style={{ marginTop: 8 }}>
+                        {resendError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* 页签条（原版 mwc-tabs：2px 分隔线 + 3px 主色下划线） */}
               <div className="up-tabbar" role="tablist">
                 {(
@@ -393,7 +641,54 @@ export default function UsersPage() {
                         }}
                       >
                         <Field label="邮箱" value={selectedUser.email} />
-                        <Field label="显示名" value={selectedUser.displayName} />
+                        {/* 昵称编辑（grilling）：本人或超管可改；保存 PATCH displayName，
+                            改自己时刷新顶栏昵称（auth 上下文） */}
+                        <div>
+                          <div className="up-label">显示名</div>
+                          {isSuperAdmin || selectedUser.id === user?.id ? (
+                            <>
+                              <form
+                                onSubmit={handleSaveDisplayName}
+                                className="up-form-row"
+                                style={{ marginTop: 4 }}
+                              >
+                                <input
+                                  value={displayNameDraft}
+                                  onChange={(e) => {
+                                    setDisplayNameDraft(e.target.value);
+                                    setDisplayNameSaveOk('');
+                                  }}
+                                  maxLength={64}
+                                  className="up-input"
+                                  aria-label="显示名"
+                                />
+                                <button
+                                  type="submit"
+                                  disabled={
+                                    displayNameSaving ||
+                                    !displayNameDraft.trim() ||
+                                    displayNameDraft.trim() === selectedUser.displayName
+                                  }
+                                  className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                                >
+                                  <span className="dx-button-text">
+                                    {displayNameSaving ? '保存中…' : '保存'}
+                                  </span>
+                                </button>
+                              </form>
+                              {displayNameSaveOk && (
+                                <span className="up-success">{displayNameSaveOk}</span>
+                              )}
+                              {displayNameSaveError && (
+                                <span className="up-error">{displayNameSaveError}</span>
+                              )}
+                            </>
+                          ) : (
+                            <div style={{ fontSize: 13, color: 'var(--mwc-text)' }}>
+                              {selectedUser.displayName}
+                            </div>
+                          )}
+                        </div>
                         <Field label="角色" value={userRoleLabel(selectedUser.role)} />
                         <Field label="状态" value={selectedUser.isActive ? '正常' : '未激活/已停用'} />
                         <Field
@@ -611,6 +906,13 @@ export default function UsersPage() {
                           className="up-input"
                         />
                         <input
+                          type="email"
+                          placeholder="联系人邮箱（必填）"
+                          value={form.email}
+                          onChange={(e) => setForm({ ...form, email: e.target.value })}
+                          className="up-input"
+                        />
+                        <input
                           placeholder="行业（可选）"
                           value={form.industry}
                           onChange={(e) => setForm({ ...form, industry: e.target.value })}
@@ -624,18 +926,13 @@ export default function UsersPage() {
                         />
                         <button
                           type="submit"
-                          disabled={creating || !form.name}
+                          disabled={creating || !form.name || !form.email}
                           className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
                         >
                           <span className="dx-button-text">{creating ? '创建中…' : '创建客户'}</span>
                         </button>
                       </form>
                         {createError && <p className="up-error">{createError}</p>}
-                        {created && (
-                          <p className="up-success">
-                            已创建客户：{created.customer.name}（ID：{created.customer.id}）——可在项目详情页邀请成员时使用该 ID
-                          </p>
-                        )}
                       </div>
                     </section>
                   </div>
@@ -645,6 +942,62 @@ export default function UsersPage() {
           )}
         </section>
       </div>
+
+      {/* 创建客户成功 → 邀请链接弹窗（#51）：mwc 卡片质感，
+          关闭方式 = 右上 × / 点击遮罩 / Esc；复制按钮成功切对勾 */}
+      {inviteModal && (
+        <div className="up-modal-backdrop" onClick={() => setInviteModal(null)}>
+          <div
+            className="up-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="客户创建成功"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="up-modal-header">
+              <div className="up-modal-title">客户创建成功</div>
+              <button
+                type="button"
+                className="icon-button-action"
+                onClick={() => setInviteModal(null)}
+                aria-label="关闭"
+              >
+                <i className="fa-solid fa-xmark fs-3 color-primary" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="up-modal-body">
+              <div style={{ fontSize: 12, color: 'var(--mwc-text-light)' }}>客户名称</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--mwc-text)' }}>
+                {inviteModal.res.customer.name}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--mwc-text-light)', marginTop: 14, marginBottom: 6 }}>
+                邀请链接（7 天内有效，绑定 {inviteModal.email}，仅该邮箱可激活）
+              </div>
+              <div className="up-invite-row">
+                <input
+                  readOnly
+                  value={inviteModal.res.inviteUrl}
+                  className="up-input"
+                  aria-label="邀请链接"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  className="icon-button-action"
+                  aria-label={copied ? '已复制' : '复制链接'}
+                  title="复制链接"
+                  onClick={handleCopy}
+                >
+                  <i
+                    className={`fa-solid ${copied ? 'fa-check' : 'fa-copy'} fs-3 ${copied ? 'color-success-strong' : 'color-primary'}`}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

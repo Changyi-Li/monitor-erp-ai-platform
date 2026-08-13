@@ -40,7 +40,12 @@ export async function apiFetch<T>(
   _retried = false,
 ): Promise<T> {
   const token = getAccessToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {};
+  // 无 body 的请求（如 POST resend-invite）不声明 JSON——否则 Fastify 报
+  // 「Body cannot be empty when content-type is set to 'application/json'」
+  if (opts.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (opts.auth !== false && token) {
     headers.Authorization = `Bearer ${token}`;
   }

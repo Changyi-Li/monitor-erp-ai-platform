@@ -107,10 +107,12 @@ a {
 .icon-button-window-new:before { content: '\e9e3'; }
 .icon-button-save:before { content: '\e9b3'; }
 
-/* 原版 dx-icon 着色类（color-primary / -light / -strong 三档主色） */
+/* 原版 dx-icon 着色类（color-primary / -light / -strong 三档主色；
+   success 用于复制成功对勾等状态图标） */
 .color-primary { color: var(--mwc-primary); }
 .color-primary-light { color: var(--mwc-primary-light, #9aa7b4); }
 .color-primary-strong { color: var(--mwc-primary-strong, #00b1f1); }
+.color-success-strong { color: var(--mwc-success-strong); }
 
 /* 原版 icon 按钮（如「用户」header 保存）：透明底无边框，hover 加深，disabled 半透明；
    图标字号对齐原版 dx-button 的 --mwc-icon-normal: 14px（FA 图标继承该字号） */
@@ -924,13 +926,15 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   min-width: 0;
 }
 .monitor-content .background-fade {
-  /* 原版 app-home .background-fade：渐变从工具栏下方（63px）开始，右侧 -1px 防缝隙。
+  /* 原版 app-home .background-fade：渐变从工具栏下方（原版 63px）开始，右侧 -1px 防缝隙。
+     我们的顶栏由右侧 action-container 撑高（height:44px，见下），渐变起点改为贴合
+     顶栏底部 44px——否则顶栏与渐变起点之间会露出一条无渐变的全透背景带（grilling 修复）。
      终点 200% 是原版刻意设计：渐变线为元素高度的 2 倍，元素只占前一半，
      整个内容区图片可见度 0%–50%（平均 ~25%）——数学上等效登录页 #646152b3 遮罩的
      30% 可见度，因此无遮罩也能与登录页透明度/灰度观感一致 */
   background: linear-gradient(180deg, var(--mwc-lighter) 0%, transparent 200%);
   position: absolute;
-  top: 63px;
+  top: 44px;
   left: 0;
   right: -1px;
   height: 100%;
@@ -1096,6 +1100,41 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   margin: 0;
   padding: 0;
 }
+/* 账号列表 accordion 分组（grilling）：组头 = 原版树形折叠样式——
+   主色小箭头（展开旋转 90°）+ 分组名 + 灰字计数，hover 浅灰底 */
+.users-page .up-acc-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px 8px 9px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--mwc-border-light);
+  background: var(--mwc-lighter);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--mwc-text);
+  transition: background-color 0.12s ease;
+}
+.users-page .up-acc-header:hover { background: rgb(from var(--mwc-primary-dim) r g b / 0.12); }
+.users-page .up-acc-chevron {
+  font-size: 10px;
+  color: var(--mwc-primary);
+  transition: transform 0.15s ease;
+}
+.users-page .up-acc-chevron.open { transform: rotate(90deg); }
+.users-page .up-acc-label { font-weight: 600; }
+.users-page .up-acc-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--mwc-text-light);
+}
+.users-page .up-acc-body {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
 .users-page .up-item {
   display: block;
   width: 100%;
@@ -1212,4 +1251,235 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   background: var(--mwc-lighter);
   color: var(--mwc-text-light);
   cursor: not-allowed;
+}
+
+/* ===== 创建客户成功弹窗（#51）：半透明遮罩 + up-card 质感卡片 =====
+   关闭方式：右上 × / 点击遮罩 / Esc（键盘监听在 page.tsx） */
+.users-page .up-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(from var(--mwc-text) r g b / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+.users-page .up-modal {
+  width: min(520px, calc(100vw - 48px));
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  background: rgb(from var(--mwc-lighter-light) r g b / 0.97);
+  box-shadow: 0 8px 32px rgb(from var(--mwc-text) r g b / 0.25);
+  overflow: hidden;
+}
+.users-page .up-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mwc-border);
+  background: rgb(from var(--mwc-lighter) r g b / 0.6);
+}
+.users-page .up-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mwc-text);
+}
+.users-page .up-modal-body {
+  padding: 16px;
+}
+.users-page .up-invite-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.users-page .up-invite-row .up-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ===== 修改昵称弹窗（grilling，monitor-frame 全局）：质感同 users 页 .up-modal =====
+   .up-modal 仅作用域于 .users-page，顶栏用户菜单的弹窗用 .frame-modal-* 全局类 */
+.frame-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(from var(--mwc-text) r g b / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+.frame-modal {
+  width: min(420px, calc(100vw - 48px));
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  background: rgb(from var(--mwc-lighter-light) r g b / 0.97);
+  box-shadow: 0 8px 32px rgb(from var(--mwc-text) r g b / 0.25);
+  overflow: hidden;
+}
+.frame-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mwc-border);
+  background: rgb(from var(--mwc-lighter) r g b / 0.6);
+}
+.frame-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mwc-text);
+}
+.frame-modal-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.frame-modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--mwc-font-family);
+  color: var(--mwc-text);
+  background: var(--mwc-lightest);
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  transition: border-color 0.15s;
+}
+.frame-modal-input:focus {
+  border-color: var(--mwc-primary);
+  outline: none;
+}
+.frame-modal-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--mwc-text-light);
+}
+.frame-modal-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--mwc-critical-strong);
+}
+.frame-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* ===== 邀请页（grilling 点 5）：完整 Monitor 外壳 =====
+   顶栏复用全局 .monitor-toolbar / .status-container；内容区复用 .monitor-content
+   结构（背景图 + fade 渐变与主界面完全一致，grilling）；卡片为 mwc 质感，
+   同 users 页 .up-card（细边框 + 轻阴影 + 微透明）与 dx-editor-filled 输入框 */
+.invite-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--mwc-bg);
+}
+/* 覆盖 .monitor-content .monitor-main（全局）：卡片居中，上下留白
+   （flex:1 + overflow-y:auto + z-index 1 沿用主界面规则，卡片浮于背景之上） */
+.invite-page .monitor-content .monitor-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+}
+/* 渐变起点贴合邀请页顶栏（grilling 修复）：邀请页顶栏无右侧 action-container
+   （全局 44px），只有 status-container 一行（height:20px）——若沿用 44px，
+   顶栏下方会露出一条无渐变的全透背景带；这里对齐到 20px 与下方渐变衔接 */
+.invite-page .monitor-content .background-fade {
+  top: 20px;
+}
+.invite-page .invite-card {
+  width: min(440px, 100%);
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  background: rgb(from var(--mwc-lighter-light) r g b / 0.88);
+  box-shadow: 0 1px 3px rgb(from var(--mwc-text) r g b / 0.08);
+  overflow: hidden;
+}
+.invite-page .invite-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+.invite-page .invite-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--mwc-text);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mwc-border-light);
+}
+.invite-page .invite-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--mwc-text-light);
+}
+.invite-page .invite-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.invite-page .invite-label {
+  font-size: 12px;
+  color: var(--mwc-text-light);
+}
+.invite-page .invite-input {
+  padding: 8px 10px;
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  font-size: 13px;
+  background: var(--mwc-lighter);
+  color: var(--mwc-text);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.invite-page .invite-input:hover:not(:disabled) { border-color: var(--mwc-primary-dim); }
+.invite-page .invite-input:focus { border-color: var(--mwc-primary); outline: none; }
+.invite-page .invite-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--mwc-critical-strong);
+}
+.invite-page .invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+.invite-page .invite-actions .dx-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.invite-page .invite-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 20px;
+}
+.invite-page .invite-success {
+  margin: 0;
+  font-size: 14px;
+  color: var(--mwc-text);
+}
+.invite-page .invite-msg {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 20px;
+  font-size: 13px;
+  color: var(--mwc-text-light);
+}
+.invite-page .invite-msg-error {
+  color: var(--mwc-critical-strong);
+}
+.invite-page .invite-loading {
+  margin: 0;
 }
