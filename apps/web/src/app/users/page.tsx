@@ -247,54 +247,34 @@ export default function UsersPage() {
     }
   }
 
-  const inputStyle = {
-    padding: '6px 8px',
-    border: '1px solid var(--mwc-border, #d1d5db)',
-    borderRadius: 4,
-    fontSize: 13,
-  } as const;
-
+  // 输入框样式走 CSS 类 .up-input（原版 dx-editor-filled：浅灰填充底 +
+  // 细边框，hover/focus 变主色，见 globals.css .users-page 块）
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '8px 0' }}>
-      <h2 style={{ fontSize: 18, margin: '0 0 12px' }}>用户</h2>
-      {error && <p style={{ color: '#b91c1c' }}>{error}</p>}
+    <div className="users-page" style={{ width: '100%', paddingBottom: 24 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 16px' }}>用户</h2>
+      {error && <p className="up-error">{error}</p>}
 
-      {/* 主区：左侧账号列表 + 右侧详情（原版「用户」程序布局） */}
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-        {/* 左侧列表 */}
-        <aside
-          style={{
-            width: 260,
-            flexShrink: 0,
-            border: '1px solid var(--mwc-border, #e5e7eb)',
-            borderRadius: 8,
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              padding: '10px 12px',
-              fontSize: 13,
-              fontWeight: 600,
-              borderBottom: '1px solid var(--mwc-border, #e5e7eb)',
-              background: 'var(--mwc-lighter, #f9fafb)',
-            }}
-          >
+      {/* 主区：左侧账号列表 + 右侧详情（全宽卡片铺满内容区，对齐原版） */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        {/* 左侧列表：面板（1px 边框 + 4px 圆角）+ 选中 = 3px 主色竖条 + 网格选中蓝 */}
+        <aside className="up-panel" style={{ width: 260, flexShrink: 0 }}>
+          <div className="up-panel-header">
             平台账号（{data?.users.length ?? 0}）
           </div>
-          {/* 昵称搜索（#37 迭代）：按 displayName 实时过滤列表 */}
-          <div style={{ padding: 8, borderBottom: '1px solid var(--mwc-border, #e5e7eb)' }}>
+          {/* 昵称搜索（#37 迭代）：按 displayName 实时过滤列表；
+             透明底 + 底边线（聚焦变主色），与侧边菜单 search-form 同构 */}
+          <div className="up-search-wrap">
             <input
               type="text"
               placeholder="按昵称搜索…"
               value={nameQuery}
               onChange={(e) => setNameQuery(e.target.value)}
-              style={{ ...inputStyle, width: '100%' }}
+              className="up-search"
             />
           </div>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 380, overflowY: 'auto' }}>
+          <ul className="up-list" style={{ maxHeight: 380, overflowY: 'auto' }}>
             {filteredUsers.length === 0 ? (
-              <li style={{ padding: '12px', fontSize: 12, color: 'var(--mwc-text-light, #6b7280)' }}>
+              <li className="up-item-sub" style={{ padding: 12 }}>
                 {nameQuery.trim() ? '无匹配昵称' : '暂无账号'}
               </li>
             ) : (
@@ -303,23 +283,10 @@ export default function UsersPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedId(u.id)}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '10px 12px',
-                      border: 'none',
-                      borderBottom: '1px solid var(--mwc-border, #f3f4f6)',
-                      cursor: 'pointer',
-                      background: selectedId === u.id
-                        ? 'var(--mwc-primary-light, #eef2ff)'
-                        : 'transparent',
-                      fontSize: 13,
-                      color: 'var(--mwc-text, #1f2937)',
-                    }}
+                    className={`up-item${selectedId === u.id ? ' selected' : ''}`}
                   >
-                    <div style={{ fontWeight: 600 }}>{u.displayName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--mwc-text-light, #6b7280)' }}>
+                    <div className="up-item-name">{u.displayName}</div>
+                    <div className="up-item-sub">
                       {u.email} · {userRoleLabel(u.role)}
                     </div>
                   </button>
@@ -332,86 +299,61 @@ export default function UsersPage() {
         {/* 右侧详情 */}
         <section style={{ flex: 1, minWidth: 0 }}>
           {!selectedUser ? (
-            <p style={{ color: 'var(--mwc-text-light, #6b7280)', fontSize: 13, padding: 24 }}>
+            <p style={{ color: 'var(--mwc-text-light)', fontSize: 13, padding: 24 }}>
               请选择左侧用户查看详情
             </p>
           ) : (
             <>
-              {/* header 区（原版 header section：bnCurrentKey + 描述 + 许可） */}
-              <form
-                onSubmit={handleSaveAll}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  gap: 16,
-                  flexWrap: 'wrap',
-                  padding: '14px 16px',
-                  border: '1px solid var(--mwc-border, #e5e7eb)',
-                  borderRadius: '8px 8px 0 0',
-                  background: 'var(--mwc-lighter, #f9fafb)',
-                }}
-              >
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, color: 'var(--mwc-text-light, #6b7280)' }}>
-                    昵称
-                  </label>
-                  {/* bnCurrentKey 风格：主键大字展示——昵称（#37 迭代：用户名位置放昵称） */}
-                  <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--mwc-primary, #1a56db)' }}>
-                    {selectedUser.displayName}
+              {/* header 区（原版 section.header = mwc-box 卡片）：
+                  卡片标题 + 昵称大字/描述/保存，下方接页签条 */}
+              <form onSubmit={handleSaveAll} className="up-card" style={{ display: 'block' }}>
+                <div className="up-card-title">用户信息</div>
+                <div
+                  className="up-card-body"
+                  style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}
+                >
+                  <div>
+                    <label className="up-label">昵称</label>
+                    {/* bnCurrentKey 风格：主键大字展示——昵称（#37 迭代：用户名位置放昵称） */}
+                    <div className="up-keyname">{selectedUser.displayName}</div>
+                    <div className="up-subtext">{selectedUser.email}</div>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--mwc-text-light, #6b7280)' }}>
-                    {selectedUser.email}
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <label className="up-label">描述</label>
+                    <input
+                      type="text"
+                      maxLength={35}
+                      value={descriptionDraft}
+                      onChange={(e) => setDescriptionDraft(e.target.value)}
+                      disabled={!isSuperAdmin}
+                      placeholder={isSuperAdmin ? '输入描述（最多 35 字符）' : '（无描述）'}
+                      className="up-input"
+                      style={{ width: '100%' }}
+                    />
                   </div>
-                </div>
-                <div style={{ flex: 1, minWidth: 220 }}>
-                  <label style={{ display: 'block', fontSize: 12, color: 'var(--mwc-text-light, #6b7280)' }}>
-                    描述
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={35}
-                    value={descriptionDraft}
-                    onChange={(e) => setDescriptionDraft(e.target.value)}
-                    disabled={!isSuperAdmin}
-                    placeholder={isSuperAdmin ? '输入描述（最多 35 字符）' : '（无描述）'}
-                    style={{
-                      ...inputStyle,
-                      width: '100%',
-                      background: isSuperAdmin ? '#fff' : 'var(--mwc-lighter, #f9fafb)',
-                    }}
-                  />
-                </div>
-                {isSuperAdmin && (
-                  <button
-                    type="submit"
-                    className="icon-button-action"
-                    disabled={saving}
-                    title={saving ? '保存中…' : '保存'}
-                    aria-label="保存"
-                    data-testid="save-description"
-                    style={{ marginLeft: 'auto' }}
-                  >
-                    {/* 保存按钮图标（Font Awesome 免费版 fa-floppy-disk，替代原版 icon-button-save；fs-3 放大） */}
-                    <i className="fa-solid fa-floppy-disk fs-3 color-primary" aria-hidden="true" data-testid="icon" />
-                  </button>
-                )}
-                <div style={{ width: '100%' }}>
-                  {saveError && <span style={{ color: '#b91c1c', fontSize: 12 }}>{saveError}</span>}
-                  {saveOk && <span style={{ color: '#15803d', fontSize: 12 }}>{saveOk}</span>}
+                  {isSuperAdmin && (
+                    <button
+                      type="submit"
+                      className="icon-button-action"
+                      disabled={saving}
+                      title={saving ? '保存中…' : '保存'}
+                      aria-label="保存"
+                      data-testid="save-description"
+                      style={{ marginLeft: 'auto' }}
+                    >
+                      {/* 保存按钮图标（Font Awesome 免费版 fa-floppy-disk，替代原版 icon-button-save；fs-3 放大） */}
+                      <i className="fa-solid fa-floppy-disk fs-3 color-primary" aria-hidden="true" data-testid="icon" />
+                    </button>
+                  )}
+                  <div style={{ width: '100%' }}>
+                    {saveError && <span className="up-error" style={{ fontSize: 12 }}>{saveError}</span>}
+                    {saveOk && <span className="up-success" style={{ fontSize: 12 }}>{saveOk}</span>}
+                  </div>
                 </div>
               </form>
 
-              {/* 页签条（原版 mwc-tabs） */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 4,
-                  borderBottom: '2px solid var(--mwc-border, #e5e7eb)',
-                  padding: '0 12px',
-                  background: '#fff',
-                }}
-                role="tablist"
-              >
+              {/* 页签条（原版 mwc-tabs：2px 分隔线 + 3px 主色下划线） */}
+              <div className="up-tabbar" role="tablist">
                 {(
                   [
                     ['general', '通用'],
@@ -430,54 +372,48 @@ export default function UsersPage() {
                     role="tab"
                     aria-selected={activeTab === key}
                     onClick={() => setActiveTab(key)}
-                    style={{
-                      padding: '10px 16px',
-                      border: 'none',
-                      borderBottom: activeTab === key ? '3px solid var(--mwc-primary, #1a56db)' : '3px solid transparent',
-                      fontWeight: activeTab === key ? 700 : 400,
-                      cursor: 'pointer',
-                      background: 'transparent',
-                      fontSize: 13,
-                      color: activeTab === key
-                        ? 'var(--mwc-primary, #1a56db)'
-                        : 'var(--mwc-text-light, #6b7280)',
-                    }}
+                    className={`up-tab${activeTab === key ? ' active' : ''}`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
 
-              {/* 页签内容 */}
-              <div
-                style={{
-                  border: '1px solid var(--mwc-border, #e5e7eb)',
-                  borderTop: 'none',
-                  borderRadius: '0 0 8px 8px',
-                  padding: 16,
-                  background: 'var(--mwc-lighter, #fff)',
-                }}
-              >
+              {/* 页签内容：mwc-box property-group 卡片（原版质感，铺满内容区） */}
+              <div style={{ padding: '12px 0 8px' }}>
                 {activeTab === 'general' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(180px, 1fr))', gap: '12px 24px', maxWidth: 640 }}>
-                    <Field label="邮箱" value={selectedUser.email} />
-                    <Field label="显示名" value={selectedUser.displayName} />
-                    <Field label="角色" value={userRoleLabel(selectedUser.role)} />
-                    <Field label="状态" value={selectedUser.isActive ? '正常' : '未激活/已停用'} />
-                    <Field
-                      label="创建时间"
-                      value={new Date(selectedUser.createdAt).toLocaleString()}
-                    />
-                    <Field label="描述" value={selectedUser.description ?? '—'} />
+                  <div className="up-card">
+                    <div className="up-card-title">通用</div>
+                    <div className="up-card-body">
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                          gap: '12px 24px',
+                        }}
+                      >
+                        <Field label="邮箱" value={selectedUser.email} />
+                        <Field label="显示名" value={selectedUser.displayName} />
+                        <Field label="角色" value={userRoleLabel(selectedUser.role)} />
+                        <Field label="状态" value={selectedUser.isActive ? '正常' : '未激活/已停用'} />
+                        <Field
+                          label="创建时间"
+                          value={new Date(selectedUser.createdAt).toLocaleString()}
+                        />
+                        <Field label="描述" value={selectedUser.description ?? '—'} />
+                      </div>
+                    </div>
                   </div>
                 )}
                 {activeTab === 'roles' && (
-                  <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                    <p style={{ margin: 0 }}>
-                      当前角色：
-                      <strong>{userRoleLabel(selectedUser.role)}</strong>
-                    </p>
-                    <p style={{ margin: '4px 0 0', color: 'var(--mwc-text-light, #6b7280)' }}>
+                  <div className="up-card">
+                    <div className="up-card-title">角色</div>
+                    <div className="up-card-body" style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--mwc-text)' }}>
+                      <p style={{ margin: 0 }}>
+                        当前角色：
+                        <strong>{userRoleLabel(selectedUser.role)}</strong>
+                      </p>
+                    <p style={{ margin: '4px 0 0', color: 'var(--mwc-text-light)' }}>
                       {selectedUser.role === 'super_admin'
                         ? '超级管理员：全部功能 + 平台管理（用户/客户）。'
                         : selectedUser.role === 'internal'
@@ -487,28 +423,23 @@ export default function UsersPage() {
                     {isSuperAdmin ? (
                       // #38：超管可改平台角色（self 与 customer 不可改，用户已拍板）
                       selectedUser.id === user?.id ? (
-                        <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light, #6b7280)' }}>
+                        <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light)' }}>
                           不能修改自己的角色
                         </p>
                       ) : selectedUser.role === 'customer' ? (
-                        <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light, #6b7280)' }}>
+                        <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light)' }}>
                           客户角色不可在此修改
                         </p>
                       ) : (
                         <form
                           onSubmit={handleSaveRole}
-                          style={{
-                            display: 'flex',
-                            gap: 8,
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            marginTop: 12,
-                          }}
+                          className="up-form-row"
+                          style={{ marginTop: 12 }}
                         >
                           <select
                             value={roleDraft}
                             onChange={(e) => setRoleDraft(e.target.value as UserRole)}
-                            style={inputStyle}
+                            className="up-input"
                             aria-label="角色"
                           >
                             {(['internal', 'super_admin'] as const).map((r) => (
@@ -524,16 +455,19 @@ export default function UsersPage() {
                           >
                             <span className="dx-button-text">{roleSaving ? '保存中…' : '保存'}</span>
                           </button>
-                          {roleSaveOk && <span style={{ color: '#15803d' }}>{roleSaveOk}</span>}
-                          {roleSaveError && <span style={{ color: '#b91c1c' }}>{roleSaveError}</span>}
+                          {roleSaveOk && <span className="up-success">{roleSaveOk}</span>}
+                          {roleSaveError && <span className="up-error">{roleSaveError}</span>}
                         </form>
                       )
                     ) : null}
+                    </div>
                   </div>
                 )}
                 {activeTab === 'permissions' && (
-                  <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-                    <p style={{ margin: 0, fontWeight: 600 }}>权限范围（按角色推导）</p>
+                  <div className="up-card">
+                    <div className="up-card-title">用户权限</div>
+                    <div className="up-card-body" style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--mwc-text)' }}>
+                      <p style={{ margin: 0, fontWeight: 600 }}>权限范围（按角色推导）</p>
                     <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
                       {selectedUser.role === 'customer' ? (
                         <>
@@ -551,106 +485,97 @@ export default function UsersPage() {
                         </>
                       )}
                     </ul>
+                    </div>
                   </div>
                 )}
                 {activeTab === 'security' && (
-                  <div style={{ display: 'grid', gap: 16, maxWidth: 560 }}>
-                    <section>
-                      <h3 style={{ fontSize: 13, margin: '0 0 8px', color: 'var(--mwc-text-light, #6b7280)' }}>
-                        验证方式（只读）
-                      </h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(160px, 1fr))', gap: '12px 24px' }}>
-                        <Field label="邮箱" value={selectedUser.email} />
-                        {/* 不暴露密码明文，只展示状态（原版安全页签同样只显示掩码） */}
-                        <Field label="密码" value={selectedUser.id === user?.id ? '（本人账号）' : '已设置'} />
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                      gap: 12,
+                      alignItems: 'start',
+                    }}
+                  >
+                    <section className="up-card">
+                      <div className="up-card-title">验证方式（只读）</div>
+                      <div className="up-card-body">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(140px, 1fr))', gap: '12px 24px' }}>
+                          <Field label="邮箱" value={selectedUser.email} />
+                          {/* 不暴露密码明文，只展示状态（原版安全页签同样只显示掩码） */}
+                          <Field label="密码" value={selectedUser.id === user?.id ? '（本人账号）' : '已设置'} />
+                        </div>
                       </div>
                     </section>
-                    <section>
-                      <h3 style={{ fontSize: 13, margin: '0 0 8px', color: 'var(--mwc-text-light, #6b7280)' }}>
-                        重置密码
-                      </h3>
-                      {selectedUser.id === user?.id || isSuperAdmin ? (
-                        <form
-                          onSubmit={handleResetPassword}
-                          style={{
-                            display: 'flex',
-                            gap: 8,
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            padding: 12,
-                            border: '1px solid #e5e7eb',
-                            borderRadius: 8,
-                            background: 'var(--mwc-lighter, #f9fafb)',
-                          }}
-                        >
-                          <input
-                            type="password"
-                            placeholder="新密码（至少 6 位）"
-                            value={resetPw}
-                            onChange={(e) => setResetPw(e.target.value)}
-                            style={inputStyle}
-                            autoComplete="new-password"
-                          />
-                          <button
-                            type="submit"
-                            disabled={resetting || resetPw.length < 6}
-                            className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
-                          >
-                            <span className="dx-button-text">{resetting ? '重置中…' : '重置密码'}</span>
-                          </button>
-                          {resetOk && <span style={{ color: '#15803d', fontSize: 13 }}>{resetOk}</span>}
-                          {resetError && <span style={{ color: '#b91c1c', fontSize: 13 }}>{resetError}</span>}
-                        </form>
-                      ) : (
-                        <p style={{ margin: 0, fontSize: 13, color: 'var(--mwc-text-light, #6b7280)' }}>
-                          只能修改自己的密码
-                        </p>
-                      )}
+                    <section className="up-card">
+                      <div className="up-card-title">重置密码</div>
+                      <div className="up-card-body">
+                        {selectedUser.id === user?.id || isSuperAdmin ? (
+                          <form onSubmit={handleResetPassword} className="up-form-row">
+                            <input
+                              type="password"
+                              placeholder="新密码（至少 6 位）"
+                              value={resetPw}
+                              onChange={(e) => setResetPw(e.target.value)}
+                              className="up-input"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="submit"
+                              disabled={resetting || resetPw.length < 6}
+                              className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                            >
+                              <span className="dx-button-text">{resetting ? '重置中…' : '重置密码'}</span>
+                            </button>
+                            {resetOk && <span className="up-success">{resetOk}</span>}
+                            {resetError && <span className="up-error">{resetError}</span>}
+                          </form>
+                        ) : (
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--mwc-text-light)' }}>
+                            只能修改自己的密码
+                          </p>
+                        )}
+                      </div>
                     </section>
                   </div>
                 )}
                 {activeTab === 'admin' && (
-                  <div style={{ display: 'grid', gap: 16, maxWidth: 760 }}>
-                    <section>
-                      <h3 style={{ fontSize: 13, margin: '0 0 8px', color: 'var(--mwc-text-light, #6b7280)' }}>
-                        创建内部用户（US-3）
-                      </h3>
-                      <form
-                        onSubmit={handleCreateUser}
-                        style={{
-                          display: 'flex',
-                          gap: 8,
-                          flexWrap: 'wrap',
-                          padding: 12,
-                          border: '1px solid #e5e7eb',
-                          borderRadius: 8,
-                          background: 'var(--mwc-lighter, #f9fafb)',
-                        }}
-                      >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                      gap: 12,
+                      alignItems: 'start',
+                    }}
+                  >
+                    <section className="up-card">
+                      <div className="up-card-title">创建内部用户（US-3）</div>
+                      <div className="up-card-body">
+                        <form onSubmit={handleCreateUser} className="up-form-row">
                         <input
                           type="email"
                           placeholder="邮箱"
                           value={userForm.email}
                           onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                          style={inputStyle}
+                          className="up-input"
                         />
                         <input
                           placeholder="昵称（唯一，可先留空）"
                           value={userForm.displayName}
                           onChange={(e) => setUserForm({ ...userForm, displayName: e.target.value })}
-                          style={inputStyle}
+                          className="up-input"
                         />
                         <input
                           type="password"
                           placeholder="初始密码（至少 6 位）"
                           value={userForm.password}
                           onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                          style={inputStyle}
+                          className="up-input"
                         />
                         <select
                           value={userForm.role}
                           onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
-                          style={inputStyle}
+                          className="up-input"
                         >
                           {(['internal', 'super_admin'] as const).map((r) => (
                             <option key={r} value={r}>
@@ -666,47 +591,36 @@ export default function UsersPage() {
                           <span className="dx-button-text">{userCreating ? '创建中…' : '创建内部用户'}</span>
                         </button>
                       </form>
-                      {userCreateError && <p style={{ color: '#b91c1c', fontSize: 13 }}>{userCreateError}</p>}
-                      {userCreated && (
-                        <p style={{ color: '#15803d', fontSize: 13 }}>
-                          已创建用户：{userCreated.user.displayName}（{userCreated.user.email} ·{' '}
-                          {userRoleLabel(userCreated.user.role)}）——描述默认取昵称，可在通用页签查看
-                        </p>
-                      )}
+                      {userCreateError && <p className="up-error">{userCreateError}</p>}
+                        {userCreated && (
+                          <p className="up-success">
+                            已创建用户：{userCreated.user.displayName}（{userCreated.user.email} ·{' '}
+                            {userRoleLabel(userCreated.user.role)}）——描述默认取昵称，可在通用页签查看
+                          </p>
+                        )}
+                      </div>
                     </section>
-                    <section>
-                      <h3 style={{ fontSize: 13, margin: '0 0 8px', color: 'var(--mwc-text-light, #6b7280)' }}>
-                        创建客户
-                      </h3>
-                      <form
-                        onSubmit={handleCreateCustomer}
-                        style={{
-                          display: 'flex',
-                          gap: 8,
-                          flexWrap: 'wrap',
-                          padding: 12,
-                          border: '1px solid #e5e7eb',
-                          borderRadius: 8,
-                          background: 'var(--mwc-lighter, #f9fafb)',
-                        }}
-                      >
+                    <section className="up-card">
+                      <div className="up-card-title">创建客户</div>
+                      <div className="up-card-body">
+                        <form onSubmit={handleCreateCustomer} className="up-form-row">
                         <input
                           placeholder="客户名称"
                           value={form.name}
                           onChange={(e) => setForm({ ...form, name: e.target.value })}
-                          style={inputStyle}
+                          className="up-input"
                         />
                         <input
                           placeholder="行业（可选）"
                           value={form.industry}
                           onChange={(e) => setForm({ ...form, industry: e.target.value })}
-                          style={inputStyle}
+                          className="up-input"
                         />
                         <input
                           placeholder="地区（可选）"
                           value={form.region}
                           onChange={(e) => setForm({ ...form, region: e.target.value })}
-                          style={inputStyle}
+                          className="up-input"
                         />
                         <button
                           type="submit"
@@ -716,12 +630,13 @@ export default function UsersPage() {
                           <span className="dx-button-text">{creating ? '创建中…' : '创建客户'}</span>
                         </button>
                       </form>
-                      {createError && <p style={{ color: '#b91c1c', fontSize: 13 }}>{createError}</p>}
-                      {created && (
-                        <p style={{ color: '#15803d', fontSize: 13 }}>
-                          已创建客户：{created.customer.name}（ID：{created.customer.id}）——可在项目详情页邀请成员时使用该 ID
-                        </p>
-                      )}
+                        {createError && <p className="up-error">{createError}</p>}
+                        {created && (
+                          <p className="up-success">
+                            已创建客户：{created.customer.name}（ID：{created.customer.id}）——可在项目详情页邀请成员时使用该 ID
+                          </p>
+                        )}
+                      </div>
                     </section>
                   </div>
                 )}
@@ -734,12 +649,12 @@ export default function UsersPage() {
   );
 }
 
-/** 只读字段（通用页签） */
+/** 只读字段（通用页签）：label 12px 灰 + value 13px（原版 dx-field 同构） */
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ fontSize: 12, color: 'var(--mwc-text-light, #6b7280)' }}>{label}</div>
-      <div style={{ fontSize: 13, wordBreak: 'break-all' }}>{value}</div>
+      <div style={{ fontSize: 12, color: 'var(--mwc-text-light)' }}>{label}</div>
+      <div style={{ fontSize: 13, color: 'var(--mwc-text)', wordBreak: 'break-all' }}>{value}</div>
     </div>
   );
 }

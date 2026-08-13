@@ -1042,3 +1042,174 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   color: var(--mwc-text-light);
   line-height: 1.5;
 }
+
+/* ===== 用户管理页（users/page.tsx，Monitor 原生风格重设计） =====
+   仅作用域于 .users-page，不影响其他页面。全部引用 mwc 变量，
+   body.monitor-dark-contrast 覆盖同名变量 → 暗色主题自动跟随，无额外规则。
+   设计要点（对齐原版「用户」设置页 DOM：section.header + mwc-tabs +
+   mwc-box property-group 卡片网格）：
+   - 全宽布局：卡片铺满 .monitor-main 内容区（不再 maxWidth 居中）
+   - 卡片 = 原版 mwc-box 质感：1px var(--mwc-border) 细边框 + 4px 圆角 +
+     轻阴影 + 88% 不透明背景（背景渐变/暗色下透出，rgb(from) 亮暗自适应）
+   - 卡片标题 = 原版 mwc-box h2 property-group：13px 600 + 底部 1px 细线
+   - 输入框 = 原版 dx-editor-filled：浅灰填充底（--mwc-lighter）+ 细边框，
+     hover 变 primary-dim、focus 变 primary（原版 dx filled 交互）
+   - 列表选中 = 3px 主色左竖条 + Monitor 网格选中蓝（--mwc-grid-selected-background），
+     与全站「竖条语言」一致；竖条常驻占位（透明），选中只换色 → 无文字跳动
+   - 搜索框 = 侧边菜单 search-form 风格：透明底 + 底边线，hover/focus 变主色
+   - tab = 原版 mwc-tabs：1px 分隔线 + 3px 主色下划线，hover 浅灰 */
+.users-page .up-panel {
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  overflow: hidden;
+  background: rgb(from var(--mwc-lighter-light) r g b / 0.88);
+  box-shadow: 0 1px 3px rgb(from var(--mwc-text) r g b / 0.08);
+}
+.users-page .up-panel-header {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mwc-text);
+  border-bottom: 1px solid var(--mwc-border);
+  background: var(--mwc-lighter);
+}
+.users-page .up-search-wrap {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--mwc-border);
+}
+.users-page .up-search {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--mwc-border);
+  background: transparent;
+  outline: none;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--mwc-text);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.users-page .up-search::placeholder { color: var(--mwc-text-light); opacity: 0.8; }
+.users-page .up-search:hover { border-bottom-color: var(--mwc-primary-dim); }
+.users-page .up-search:focus { border-bottom-color: var(--mwc-primary); color: var(--mwc-text); }
+.users-page .up-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.users-page .up-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px 10px 9px;
+  border: none;
+  /* 竖条常驻占位：选中只换色，文字位置不跳 */
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--mwc-border-light);
+  cursor: pointer;
+  background: transparent;
+  font-size: 13px;
+  color: var(--mwc-text);
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.users-page .up-item:hover:not(.selected) { background: var(--mwc-lighter); }
+.users-page .up-item.selected {
+  border-left-color: var(--mwc-primary);
+  background: var(--mwc-grid-selected-background);
+}
+.users-page .up-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mwc-text);
+}
+.users-page .up-item-sub {
+  font-size: 12px;
+  color: var(--mwc-text-light);
+}
+.users-page .up-tabbar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--mwc-border);
+}
+.users-page .up-tab {
+  padding: 8px 16px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--mwc-text-light);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.users-page .up-tab:hover:not(.active) { background: var(--mwc-lighter); }
+.users-page .up-tab.active {
+  border-bottom-color: var(--mwc-primary);
+  font-weight: 600;
+  color: var(--mwc-primary);
+}
+.users-page .up-label {
+  display: block;
+  font-size: 12px;
+  color: var(--mwc-text-light);
+  margin-bottom: 4px;
+}
+.users-page .up-keyname {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--mwc-primary);
+}
+.users-page .up-subtext {
+  font-size: 12px;
+  color: var(--mwc-text-light);
+}
+.users-page .up-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mwc-label);
+  margin: 0 0 8px;
+}
+.users-page .up-form-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.users-page .up-success { color: var(--mwc-success-strong); font-size: 13px; }
+.users-page .up-error { color: var(--mwc-critical-strong); font-size: 13px; }
+
+/* ===== 卡片（原版 mwc-box property-group）：细边框 + 轻阴影 + 微透明 ===== */
+.users-page .up-card {
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  background: rgb(from var(--mwc-lighter-light) r g b / 0.88);
+  box-shadow: 0 1px 3px rgb(from var(--mwc-text) r g b / 0.08);
+  overflow: hidden;
+}
+.users-page .up-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mwc-text);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--mwc-border-light);
+  background: rgb(from var(--mwc-lighter) r g b / 0.6);
+}
+.users-page .up-card-body {
+  padding: 12px;
+}
+
+/* ===== 输入框（原版 dx-editor-filled）：浅灰填充底 + 细边框 ===== */
+.users-page .up-input {
+  padding: 6px 8px;
+  border: 1px solid var(--mwc-border);
+  border-radius: var(--mwc-border-radius-small);
+  font-size: 13px;
+  background: var(--mwc-lighter);
+  color: var(--mwc-text);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.users-page .up-input:hover:not(:disabled) { border-color: var(--mwc-primary-dim); }
+.users-page .up-input:focus { border-color: var(--mwc-primary); outline: none; }
+.users-page .up-input:disabled {
+  background: var(--mwc-lighter);
+  color: var(--mwc-text-light);
+  cursor: not-allowed;
+}
