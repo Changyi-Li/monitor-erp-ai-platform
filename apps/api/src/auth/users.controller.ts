@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   CreateUserRequestSchema,
   CreateUserResponseSchema,
+  ResendInviteResponseSchema,
   ResetUserPasswordRequestSchema,
   ResetUserPasswordResponseSchema,
   UpdateUserRequestSchema,
@@ -10,6 +11,7 @@ import {
   UsersListResponseSchema,
   type CreateUserRequest,
   type CreateUserResponse,
+  type ResendInviteResponse,
   type ResetUserPasswordRequest,
   type ResetUserPasswordResponse,
   type UpdateUserRequest,
@@ -49,9 +51,13 @@ export class UsersController {
     return this.auth.listUsers();
   }
 
-  /** 超管更新用户资料（#37）：当前仅 description；方法级 @Roles 覆盖类级 */
+  /**
+   * 更新用户资料（#37 + grilling 昵称编辑）：方法级 @Roles 覆盖类级——
+   * 入口开放到所有登录角色（昵称本人可改），字段级权限在 service 层按 actor 判定
+   * （改别人仅超管；description/role 仅超管；role 另有 self/customer 防护）。
+   */
   @Patch(':id')
-  @Roles('super_admin')
+  @Roles('super_admin', 'internal', 'customer')
   @ZodResponse(UpdateUserResponseSchema)
   updateUser(
     // 非法 uuid → 400，避免 22P02 → 500（同客户 PATCH 模式）
@@ -60,6 +66,21 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ): Promise<UpdateUserResponse> {
     return this.auth.updateUser(id, body, actor);
+  }
+
+  /**
+   * 重发客户邀请（grilling：未激活客户链接再发放）：仅超管。
+   * 重新生成 token——旧链接立即失效，有效期刷新 7 天；已激活/非客户邀请账号 → 409。
+   */
+  @Post(':id/resend-invite')
+  @HttpCode(200)
+  @Roles('super_admin')
+  @ZodResponse(ResendInviteResponseSchema)
+  resendInvite(
+    @Param('id', uuidParam) id: string,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<ResendInviteResponse> {
+    return this.auth.resendInviteUser(id, actor);
   }
 
   /**

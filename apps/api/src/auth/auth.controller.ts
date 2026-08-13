@@ -6,10 +6,12 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import {
+  InviteInfoResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   LogoutRequestSchema,
@@ -21,6 +23,7 @@ import {
   RegisterResponseSchema,
   SetPasswordRequestSchema,
   SetPasswordResponseSchema,
+  type InviteInfoResponse,
   type LoginRequest,
   type LoginResponse,
   type LogoutRequest,
@@ -84,6 +87,15 @@ export class AuthController {
     @Req() req: FastifyRequest,
   ): Promise<SetPasswordResponse> {
     return this.auth.setPassword(body, req.ip);
+  }
+
+  /** 邀请链接类型查询（issue #50）：/invite 接受页区分客户/成员邀请表单
+   *  （空/无效 token 由 service 统一 400 文案，不在此重复校验） */
+  @Public()
+  @Get('invite-info')
+  @ZodResponse(InviteInfoResponseSchema)
+  inviteInfo(@Query('token') token?: string): Promise<InviteInfoResponse> {
+    return this.auth.inviteInfo(token ?? '');
   }
 
   @Public()

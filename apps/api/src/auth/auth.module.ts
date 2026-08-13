@@ -4,6 +4,7 @@ import { JwtModule, type JwtModuleOptions } from '@nestjs/jwt';
 import type { StringValue } from 'ms';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { InviteService } from './invite.service';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
 import { UsersController } from './users.controller';
@@ -22,8 +23,8 @@ import { UsersController } from './users.controller';
     }),
   ],
   controllers: [AuthController, UsersController],
-  providers: [AuthService, TokenService, PasswordService],
-  // PasswordService 供成员邀请（占位密码）等场景复用
-  exports: [PasswordService],
+  providers: [AuthService, TokenService, PasswordService, InviteService],
+  // PasswordService/InviteService 供成员邀请（占位密码 + 邀请链接）等场景复用
+  exports: [PasswordService, InviteService],
 })
 export class AuthModule {}

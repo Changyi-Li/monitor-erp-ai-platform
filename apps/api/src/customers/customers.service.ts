@@ -1,4 +1,10 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, eq, ilike, or } from 'drizzle-orm';
 import {
   type Customer,
@@ -9,9 +15,10 @@ import {
   type CustomersListResponse,
 } from '@monitor/contracts';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
+import { InviteService } from '../auth/invite.service';
 import type { AuthUser } from '../common/current-user.decorator';
 import { DRIZZLE, type Database } from '../database/database.module';
-import { customers, type CustomerRow } from '../database/schema';
+import { customers, userTenants, users, type CustomerRow } from '../database/schema';
 
 /** 客户（租户注册表）：建客户为超管专属（customer:create），维护归内部 */
 @Injectable()
@@ -19,31 +26,76 @@ export class CustomersService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly audit: AuditService,
+    private readonly invite: InviteService,
   ) {}
 
+  /**
+   * 创建客户（issue #50）：客户 + 联系人占位账号 + 邀请链接，一次事务完成。
+   * - email 必填：为该邮箱建待激活 customer 账号（占位密码，不可登录），归属新客户
+   * - 自动生成邀请链接（7 天有效，一次性），随响应返回——链接绑定邮箱，
+   *   激活时（set-password）必须输入与创建时一致的邮箱
+   * - 该邮箱在平台已有账号 → 409，不建客户（避免半成品客户）
+   */
   async create(
     actor: AuthUser,
     input: CustomerCreateRequest,
   ): Promise<CustomerCreateResponse> {
-    const [row] = await this.db
-      .insert(customers)
-      .values({
-        name: input.name,
-        industry: input.industry ?? null,
-        region: input.region ?? null,
-      })
-      .returning();
-    if (!row) {
-      throw new Error('创建客户失败');
+    const email = input.email.toLowerCase();
+    let row: { customer: CustomerRow; token: string };
+    try {
+      row = await this.db.transaction(async (tx) => {
+        // 邮箱唯一性在事务内检查：并发同邮箱由 users.email 唯一约束兜底（23505 → 409）
+        const [existing] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+        if (existing) {
+          throw new ConflictException('该邮箱已被使用');
+        }
+        const [customer] = await tx
+          .insert(customers)
+          .values({
+            name: input.name,
+            industry: input.industry ?? null,
+            region: input.region ?? null,
+          })
+          .returning();
+        if (!customer) {
+          throw new InternalServerErrorException('创建客户失败');
+        }
+        const { token, user } = await this.invite.createInvitedUser(tx, {
+          email,
+          // grilling：客户邀请初始昵称 = 完整邮箱（便于超管识别联系人；昵称唯一性
+          // 由邮箱唯一性自然保证——同一邮箱不会重复建号）
+          displayName: email,
+          inviteKind: 'customer',
+        });
+        await tx
+          .insert(userTenants)
+          .values({ userId: user.id, customerId: customer.id })
+          .onConflictDoNothing();
+        return { customer, token };
+      });
+    } catch (err) {
+      // 并发同邮箱创建：唯一约束报错 → 409，事务整体回滚（不产生半成品客户）
+      if ((err as { code?: string } | undefined)?.code === '23505') {
+        throw new ConflictException('该邮箱已被使用');
+      }
+      throw err;
     }
+
     await this.audit.record(AUDIT_ACTIONS.CUSTOMER_CREATE, {
       actorUserId: actor.sub,
       actorRole: actor.role,
       resourceType: 'customer',
-      resourceId: row.id,
-      metadata: { name: row.name },
+      resourceId: row.customer.id,
+      metadata: { name: row.customer.name, contactEmail: email },
     });
-    return { customer: toCustomerDto(row) };
+    return {
+      customer: toCustomerDto(row.customer),
+      inviteUrl: this.invite.buildInviteUrl(row.token),
+    };
   }
 
   /**

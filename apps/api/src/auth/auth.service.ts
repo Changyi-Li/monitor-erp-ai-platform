@@ -8,16 +8,18 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import {
   type CreateUserRequest,
   type CreateUserResponse,
+  type InviteInfoResponse,
   type LoginRequest,
   type LoginResponse,
   type MeResponse,
   type RegisterRequest,
   type RegisterResponse,
   type RefreshResponse,
+  type ResendInviteResponse,
   type ResetUserPasswordRequest,
   type ResetUserPasswordResponse,
   type SetPasswordRequest,
@@ -32,6 +34,7 @@ import type { UserRole } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
 import { DRIZZLE, type Database } from '../database/database.module';
 import { refreshTokens, users, type UserRow } from '../database/schema';
+import { InviteService } from './invite.service';
 import { PasswordService } from './password.service';
 import { sha256Hex } from './token-hash';
 import { TokenService } from './token.service';
@@ -43,6 +46,7 @@ export class AuthService {
     private readonly password: PasswordService,
     private readonly token: TokenService,
     private readonly audit: AuditService,
+    private readonly invite: InviteService,
   ) {}
 
   async register(input: RegisterRequest): Promise<RegisterResponse> {
@@ -138,20 +142,13 @@ export class AuthService {
 
   /** 邀请链接首次设密：一次性 token（sha256 落库），设密后立即失效 */
   async setPassword(input: SetPasswordRequest, ip?: string): Promise<SetPasswordResponse> {
-    const tokenHash = sha256Hex(input.token);
-    const [user] = await this.db
-      .select()
-      .from(users)
-      .where(eq(users.inviteTokenHash, tokenHash))
-      .limit(1);
-    // 统一文案覆盖：无效 / 过期 / 已使用（isActive=true），不泄露具体状态
-    if (
-      !user ||
-      !user.inviteExpiresAt ||
-      user.inviteExpiresAt <= new Date() ||
-      user.isActive
-    ) {
-      throw new BadRequestException('邀请链接无效或已过期');
+    const user = await this.findValidInviteUser(sha256Hex(input.token));
+
+    // 客户邀请（issue #50）：链接绑定邮箱——必须输入与创建时一致的邮箱才能激活
+    if (user.inviteKind === 'customer') {
+      if (!input.email || input.email.toLowerCase() !== user.email) {
+        throw new BadRequestException('邮箱与邀请绑定不一致，请使用被邀请的邮箱');
+      }
     }
 
     const passwordHash = await this.password.hash(input.password);
@@ -175,6 +172,40 @@ export class AuthService {
     });
 
     return { ok: true };
+  }
+
+  /**
+   * 邀请链接类型查询（issue #50）：公开端点，前端 /invite 页据此决定表单形状
+   * （customer = 需邮箱校验，project = 现有设密表单）。校验规则与 set-password
+   * 一致（无效 / 过期 / 已激活 → 400 统一文案）。
+   */
+  async inviteInfo(token: string): Promise<InviteInfoResponse> {
+    const user = await this.findValidInviteUser(sha256Hex(token));
+    return {
+      kind: user.inviteKind === 'customer' ? 'customer' : 'project',
+      email: user.email,
+    };
+  }
+
+  /**
+   * 按邀请 token 哈希查有效邀请用户（未过期、未激活）；无效 → 400 统一文案，
+   * 不泄露具体状态（过期 / 已使用 / 不存在同文案）。set-password 与 invite-info 共用。
+   */
+  private async findValidInviteUser(tokenHash: string): Promise<UserRow> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.inviteTokenHash, tokenHash))
+      .limit(1);
+    if (
+      !user ||
+      !user.inviteExpiresAt ||
+      user.inviteExpiresAt <= new Date() ||
+      user.isActive
+    ) {
+      throw new BadRequestException('邀请链接无效或已过期');
+    }
+    return user;
   }
 
   /** 轮换式刷新：旧 token 标记 revoked + 插入新行（事务），旧 token 立即失效 */
@@ -286,7 +317,13 @@ export class AuthService {
       resourceId: user.id,
       metadata: { email, role: input.role },
     });
-    return { user: { ...toUserDto(user), isActive: true } };
+    return {
+      user: {
+        ...toUserDto(user),
+        isActive: true,
+        inviteKind: user.inviteKind as 'customer' | null,
+      },
+    };
   }
 
   /** 用户管理列表（@Roles(super_admin, internal) 守卫，全量平台账号） */
@@ -296,14 +333,21 @@ export class AuthService {
       .from(users)
       .orderBy(users.createdAt);
     return {
-      users: rows.map((row) => ({ ...toUserDto(row), isActive: row.isActive })),
+      users: rows.map((row) => ({
+        ...toUserDto(row),
+        isActive: row.isActive,
+        inviteKind: row.inviteKind as 'customer' | null,
+      })),
     };
   }
 
   /**
-   * 超管更新用户资料（#37/#38，@Roles(super_admin) 守卫）：description + role。
-   * 防护（#38，用户已拍板）：不能修改自己的角色（防最后一名超管把自己降级锁死平台）；
-   * customer 角色不可在此修改（客户账号走项目邀请创建）。
+   * 更新用户资料（#37/#38 + grilling 昵称编辑）：description + role + displayName。
+   * 权限（字段级，按 actor 判定；入口已开放到所有登录角色）：
+   * - 目标鉴权：改自己 = 任何登录角色；改别人 = 仅超管（同 reset-password 模式）
+   * - displayName（昵称）：本人或超管（目标鉴权已覆盖）
+   * - description：仅超管（自始至终超管专属，不随昵称编辑放开）
+   * - role：仅超管 + 不能改自己（防最后一名超管把自己降级锁死平台）+ customer 不可改
    * 先查后更，未命中 404（防探测语义同客户）。
    */
   async updateUser(
@@ -311,8 +355,12 @@ export class AuthService {
     input: UpdateUserRequest,
     actor: AuthUser,
   ): Promise<UpdateUserResponse> {
+    if (actor.sub !== userId && actor.role !== 'super_admin') {
+      throw new ForbiddenException('没有权限执行该操作');
+    }
+
     const [existing] = await this.db
-      .select({ id: users.id, role: users.role })
+      .select({ id: users.id, role: users.role, displayName: users.displayName })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -321,11 +369,33 @@ export class AuthService {
     }
 
     if (input.role !== undefined) {
+      if (actor.role !== 'super_admin') {
+        throw new ForbiddenException('没有权限执行该操作');
+      }
       if (actor.sub === userId) {
         throw new ConflictException('不能修改自己的角色');
       }
       if (existing.role === 'customer') {
         throw new ConflictException('客户角色不可在此修改');
+      }
+    }
+
+    if (input.description !== undefined && actor.role !== 'super_admin') {
+      throw new ForbiddenException('没有权限执行该操作');
+    }
+
+    // 昵称唯一（#37 迭代）：display_name 部分唯一索引兜底，服务层先行查重给友好提示
+    if (
+      input.displayName !== undefined &&
+      input.displayName !== existing.displayName
+    ) {
+      const dupName = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.displayName, input.displayName), ne(users.id, userId)))
+        .limit(1);
+      if (dupName.length > 0) {
+        throw new ConflictException('该昵称已被使用');
       }
     }
 
@@ -335,6 +405,7 @@ export class AuthService {
         // drizzle 对 undefined 字段不生成 SET 子句 → 天然 PATCH 部分语义
         ...(input.description !== undefined && { description: input.description }),
         ...(input.role !== undefined && { role: input.role }),
+        ...(input.displayName !== undefined && { displayName: input.displayName }),
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
@@ -351,9 +422,49 @@ export class AuthService {
       metadata: {
         ...(input.role !== undefined && { role: input.role }),
         ...(input.description !== undefined && { description: input.description }),
+        ...(input.displayName !== undefined && { displayName: input.displayName }),
       },
     });
-    return { user: { ...toUserDto(updated), isActive: updated.isActive } };
+    return {
+      user: {
+        ...toUserDto(updated),
+        isActive: updated.isActive,
+        inviteKind: updated.inviteKind as 'customer' | null,
+      },
+    };
+  }
+
+  /**
+   * 重发客户邀请（grilling：未激活客户链接再发放，仅超管）：
+   * 重新生成一次性 token——旧链接立即失效，有效期刷新为 7 天（InviteService 语义）。
+   * 安全边界：已激活用户 → 409（激活后无邀请可言）；项目成员邀请账号（inviteKind=null）→ 409
+   * （该类邀请在项目成员页面重发，避免两处入口语义混乱）。
+   */
+  async resendInviteUser(userId: string, actor: AuthUser): Promise<ResendInviteResponse> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+    if (user.isActive) {
+      throw new ConflictException('该用户已激活，无需重发邀请链接');
+    }
+    if (user.inviteKind !== 'customer') {
+      throw new ConflictException('该账号不是客户邀请账号（项目成员邀请请在项目成员页面重发）');
+    }
+
+    const { token, expiresAt } = await this.invite.resendInviteWithExpiry(this.db, userId);
+    await this.audit.record(AUDIT_ACTIONS.USER_INVITE, {
+      actorUserId: actor.sub,
+      actorRole: actor.role,
+      resourceType: 'user',
+      resourceId: userId,
+      metadata: { email: user.email, resent: true },
+    });
+    return { inviteUrl: this.invite.buildInviteUrl(token), expiresAt: expiresAt.toISOString() };
   }
 
   /**

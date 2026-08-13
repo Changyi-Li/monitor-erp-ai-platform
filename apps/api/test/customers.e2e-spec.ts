@@ -52,7 +52,7 @@ describe('Customers e2e：客户资料编辑、搜索与只读边界', () => {
 
   async function createCustomer(
     token: string,
-    body: { name: string; industry?: string; region?: string },
+    body: { name: string; email: string; industry?: string; region?: string },
   ): Promise<{ status: number; id: string | null }> {
     const res = await app.inject({
       method: 'POST',
@@ -139,11 +139,13 @@ describe('Customers e2e：客户资料编辑、搜索与只读边界', () => {
     // 验收 ①：超管创建客户（含行业/地域基础资料）
     const a = await createCustomer(superAdminToken, {
       name: '客户A',
+      email: 'contact-a@tenant-a.test',
       industry: '制造业',
       region: '华东',
     });
     const b = await createCustomer(superAdminToken, {
       name: '客户B',
+      email: 'contact-b@tenant-b.test',
       industry: '零售',
       region: '华南',
     });

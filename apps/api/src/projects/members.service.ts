@@ -7,9 +7,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { and, eq } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
 import {
   type Member,
   type MemberInviteRequest,
@@ -20,8 +18,7 @@ import {
 } from '@monitor/contracts';
 import type { ProjectRole, UserRole } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
-import { PasswordService } from '../auth/password.service';
-import { sha256Hex } from '../auth/token-hash';
+import { InviteService } from '../auth/invite.service';
 import type { AuthUser } from '../common/current-user.decorator';
 import { DRIZZLE, type Database } from '../database/database.module';
 import {
@@ -32,9 +29,6 @@ import {
   type ProjectMemberRow,
 } from '../database/schema';
 import { TenantContextService } from '../database/tenant-context.service';
-
-/** 邀请 token 有效期（一次性；重发刷新） */
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * 项目成员管理（数据边界 = 项目，spec §2.1/§2.3）。
@@ -48,8 +42,7 @@ export class MembersService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly tenantContext: TenantContextService,
-    private readonly password: PasswordService,
-    private readonly config: ConfigService,
+    private readonly inviteService: InviteService,
     private readonly audit: AuditService,
   ) {}
 
@@ -185,23 +178,11 @@ export class MembersService {
     }
 
     // 新用户：占位密码（不可登录）+ 邀请 token + 租户归属 + 成员行
-    const token = randomBytes(32).toString('base64url');
-    const placeholderHash = await this.password.hash(randomBytes(24).toString('base64url'));
-    const [user] = await this.db
-      .insert(users)
-      .values({
-        email,
-        passwordHash: placeholderHash,
-        displayName: body.displayName?.trim() ?? email.split('@')[0] ?? 'User',
-        role: 'customer',
-        isActive: false,
-        inviteTokenHash: sha256Hex(token),
-        inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS),
-      })
-      .returning();
-    if (!user) {
-      throw new InternalServerErrorException('创建用户失败');
-    }
+    const { token, user } = await this.inviteService.createInvitedUser(this.db, {
+      email,
+      displayName: body.displayName?.trim() ?? email.split('@')[0] ?? 'User',
+      inviteKind: null,
+    });
     await this.db
       .insert(userTenants)
       .values({ userId: user.id, customerId: project.tenantId })
@@ -224,7 +205,7 @@ export class MembersService {
 
     return {
       member: toMemberDto(member, email, user.displayName),
-      inviteUrl: this.buildInviteUrl(token),
+      inviteUrl: this.inviteService.buildInviteUrl(token),
     };
   }
 
@@ -287,15 +268,7 @@ export class MembersService {
         throw new ForbiddenException('项目经理角色的邀请只能由内部用户重发');
       }
       // 待激活成员：重发邀请链接（角色不变）
-      const token = randomBytes(32).toString('base64url');
-      await this.db
-        .update(users)
-        .set({
-          inviteTokenHash: sha256Hex(token),
-          inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS),
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, existingUser.id));
+      const token = await this.inviteService.resendInvite(this.db, existingUser.id);
       await this.audit.record(AUDIT_ACTIONS.MEMBER_ADD, {
         actorUserId: actor.sub,
         actorRole: actor.role,
@@ -305,7 +278,7 @@ export class MembersService {
       });
       return {
         member: toMemberDto(existingMember, existingUser.email, existingUser.displayName),
-        inviteUrl: this.buildInviteUrl(token),
+        inviteUrl: this.inviteService.buildInviteUrl(token),
       };
     }
 
@@ -429,10 +402,6 @@ export class MembersService {
     });
   }
 
-  private buildInviteUrl(token: string): string {
-    const webUrl = this.config.get<string>('WEB_URL') ?? 'http://localhost:3000';
-    return `${webUrl}/invite?token=${token}`;
-  }
 }
 
 /** 成员行 + 联查用户信息 → 契约 Member：Date toISOString()（z.iso.datetime() 要求） */

@@ -38,20 +38,28 @@ describe('customers 契约：CustomerSchema', () => {
 });
 
 describe('customers 契约：创建', () => {
-  it('接受合法创建请求', () => {
-    expect(CustomerCreateRequestSchema.safeParse({ name: '客户B' }).success).toBe(true);
+  it('接受合法创建请求（name + 联系人邮箱，issue #50）', () => {
+    expect(CustomerCreateRequestSchema.safeParse({ name: '客户B', email: 'contact@b.test' }).success).toBe(true);
     expect(
-      CustomerCreateRequestSchema.safeParse({ name: '客户B', industry: '零售', region: '华南' }).success,
+      CustomerCreateRequestSchema.safeParse({ name: '客户B', email: 'contact@b.test', industry: '零售', region: '华南' }).success,
     ).toBe(true);
   });
 
-  it('拒绝空名称与超长名称', () => {
-    expect(CustomerCreateRequestSchema.safeParse({ name: '  ' }).success).toBe(false);
-    expect(CustomerCreateRequestSchema.safeParse({ name: 'x'.repeat(129) }).success).toBe(false);
+  it('拒绝空名称/超长名称/非法或缺失邮箱', () => {
+    expect(CustomerCreateRequestSchema.safeParse({ name: '  ', email: 'a@b.test' }).success).toBe(false);
+    expect(CustomerCreateRequestSchema.safeParse({ name: 'x'.repeat(129), email: 'a@b.test' }).success).toBe(false);
+    expect(CustomerCreateRequestSchema.safeParse({ name: '客户B' }).success).toBe(false);
+    expect(CustomerCreateRequestSchema.safeParse({ name: '客户B', email: 'not-an-email' }).success).toBe(false);
   });
 
-  it('创建响应为 { customer }', () => {
-    expect(CustomerCreateResponseSchema.safeParse({ customer: validCustomer }).success).toBe(true);
+  it('创建响应为 { customer, inviteUrl }（issue #50 必有链接）', () => {
+    expect(
+      CustomerCreateResponseSchema.safeParse({ customer: validCustomer, inviteUrl: 'https://example.com/invite?token=abc' }).success,
+    ).toBe(true);
+    expect(CustomerCreateResponseSchema.safeParse({ customer: validCustomer }).success).toBe(false);
+    expect(
+      CustomerCreateResponseSchema.safeParse({ customer: validCustomer, inviteUrl: 'not-a-url' }).success,
+    ).toBe(false);
   });
 });
 

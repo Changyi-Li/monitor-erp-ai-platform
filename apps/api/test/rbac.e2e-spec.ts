@@ -198,7 +198,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         method: 'POST',
         url: '/api/customers',
         headers: { authorization: `Bearer ${superAdminToken}` },
-        payload: { name: '客户C' },
+        payload: { name: '客户C', email: 'contact-c@rbac.test' },
       });
       expect(ok.statusCode).toBe(201);
       expect(CustomerCreateResponseSchema.safeParse(ok.json()).success).toBe(true);

@@ -6,3 +6,4 @@ export * from './logout';
 export * from './me';
 export * from './set-password';
 export * from './reset-password';
+export * from './invite-info';

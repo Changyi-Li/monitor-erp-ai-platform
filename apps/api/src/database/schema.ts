@@ -38,6 +38,9 @@ export const users = pgTable(
     // 邀请设密（RBAC issue #13）：invite_token_hash 非空 = 账号待激活（isActive=false）
     inviteTokenHash: char('invite_token_hash', { length: 64 }), // sha256 hex，一次性
     inviteExpiresAt: timestamp('invite_expires_at', { withTimezone: true }),
+    // 邀请类型（issue #50）：'customer' = 客户邀请（激活需邮箱与绑定一致）；
+    // null = 项目成员邀请（现有行为）
+    inviteKind: text('invite_kind'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

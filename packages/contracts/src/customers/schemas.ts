@@ -11,15 +11,22 @@ export const CustomerSchema = z.object({
 });
 export type Customer = z.output<typeof CustomerSchema>;
 
+/**
+ * 创建客户（issue #50）：email = 联系人邮箱，必填——创建时自动为该邮箱生成
+ * 待激活的 customer 账号与邀请链接（链接绑定邮箱，只能本人激活）。
+ */
 export const CustomerCreateRequestSchema = z.object({
   name: z.string().trim().min(1, { error: '客户名称不能为空' }).max(128),
+  email: z.email({ error: '联系人邮箱格式不正确' }),
   industry: z.string().trim().max(64).optional(),
   region: z.string().trim().max(64).optional(),
 });
 export type CustomerCreateRequest = z.output<typeof CustomerCreateRequestSchema>;
 
+/** 创建客户成功即返回邀请链接（issue #50） */
 export const CustomerCreateResponseSchema = z.object({
   customer: CustomerSchema,
+  inviteUrl: z.string().url(),
 });
 export type CustomerCreateResponse = z.output<typeof CustomerCreateResponseSchema>;
 
