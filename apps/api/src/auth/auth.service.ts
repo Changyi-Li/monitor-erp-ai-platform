@@ -27,13 +27,15 @@ import {
   type UpdateUserRequest,
   type UpdateUserResponse,
   type User,
+  type UserAdmin,
   type UsersListResponse,
 } from '@monitor/contracts';
 import type { AuthUser } from '../common/current-user.decorator';
 import { isCustomerRole, type UserRole } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
 import { DRIZZLE, type Database } from '../database/database.module';
-import { refreshTokens, users, type UserRow } from '../database/schema';
+import { userTenants, refreshTokens, users, type UserRow } from '../database/schema';
+import { TenantContextService } from '../database/tenant-context.service';
 import { InviteService } from './invite.service';
 import { PasswordService } from './password.service';
 import { sha256Hex } from './token-hash';
@@ -43,6 +45,7 @@ import { TokenService } from './token.service';
 export class AuthService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
+    private readonly tenantContext: TenantContextService,
     private readonly password: PasswordService,
     private readonly token: TokenService,
     private readonly audit: AuditService,
@@ -326,19 +329,30 @@ export class AuthService {
     };
   }
 
-  /** 用户管理列表（@Roles(super_admin, internal) 守卫，全量平台账号） */
-  async listUsers(): Promise<UsersListResponse> {
+  /**
+   * 用户管理列表（T4 对公司开放）：内部/超管全量平台账号；customer_pm 仅本公司账号
+   * （join user_tenants 按租户过滤——users 为平台表无 RLS 须显式过滤；controller 已
+   * 拒绝 customer_key_user/customer_user）。
+   */
+  async listUsers(actor: AuthUser): Promise<UsersListResponse> {
+    if (isCustomerRole(actor.role)) {
+      const ctx = this.tenantContext.current;
+      if (!ctx?.tenantId) {
+        throw new InternalServerErrorException('缺少租户上下文');
+      }
+      const tenantRows = await this.db
+        .select({ user: users })
+        .from(users)
+        .innerJoin(userTenants, eq(userTenants.userId, users.id))
+        .where(eq(userTenants.customerId, ctx.tenantId))
+        .orderBy(users.createdAt);
+      return { users: tenantRows.map((row) => toListItem(row.user)) };
+    }
     const rows = await this.db
       .select()
       .from(users)
       .orderBy(users.createdAt);
-    return {
-      users: rows.map((row) => ({
-        ...toUserDto(row),
-        isActive: row.isActive,
-        inviteKind: row.inviteKind as 'customer' | null,
-      })),
-    };
+    return { users: rows.map(toListItem) };
   }
 
   /**
@@ -521,5 +535,14 @@ function toUserDto(row: UserRow): User {
     description: row.description ?? null,
     role: row.role as User['role'],
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** DB 行 → 管理列表项（契约 UserAdmin）：User + 账号状态 + 邀请类型。listUsers 两分支共用 */
+function toListItem(row: UserRow): UserAdmin {
+  return {
+    ...toUserDto(row),
+    isActive: row.isActive,
+    inviteKind: row.inviteKind as 'customer' | null,
   };
 }

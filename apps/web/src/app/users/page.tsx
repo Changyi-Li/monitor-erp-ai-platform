@@ -21,7 +21,8 @@ import { isCustomerRole, userRoleLabel } from '../../lib/roles';
 import { CUSTOMER_ROLES, INTERNAL_ROLES, type UserRole } from '@monitor/shared';
 
 /**
- * 用户管理（内部/超管专属；issue #37 模仿原版 WebClient「用户」程序布局）。
+ * 用户管理（T4 对公司开放：内部/超管看全部平台账号；客户 PM 看本公司账号——
+ * 后端按租户过滤，前端各操作区以 isSuperAdmin 守卫保持超管专属）。
  * 布局：左侧平台账号列表（点击选中）→ 右侧 header 区（用户名 bnCurrentKey 风格 +
  * 描述 maxlength 35 + 保存）+ 页签条（通用/角色/用户权限，通用默认 active）。
  * 最小字段集：只呈现平台已有字段（邮箱/显示名/角色/状态/描述），不引入

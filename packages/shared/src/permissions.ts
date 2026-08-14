@@ -62,7 +62,7 @@ export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = 
   'rag:view': ['super_admin', 'internal'], // #21 RAG 同步状态/调试台仅内部（spec 用户故事 50）
   'project:create': ['super_admin', 'internal'],
   'member:manage': ['super_admin', 'internal', 'customer_pm'], // 客户侧管理资格 = 平台角色 customer_pm（T2）
-  'user:manage': ['super_admin', 'internal'],
+  'user:manage': ['super_admin', 'internal', 'customer_pm'], // 本公司账号列表可见（T4）；写操作仍超管/本人
   'customer:create': ['super_admin'],
   'customer:update': ['super_admin', 'internal'],
 };

@@ -28,7 +28,11 @@ import { AuthService } from './auth.service';
 // Nest 11 参数管道解析后用到的实例无 schema → transform 抛 TypeError（500）
 const uuidParam = new ZodValidationPipe(z.uuid());
 
-/** 平台用户管理（内部/超管专属，spec §2.3：内部创建客户用户账号） */
+/**
+ * 平台用户管理。T4 对公司开放：类级默认内部/超管，各方法按语义覆盖——
+ * 列表（GET）customer_pm 可见本公司账号；建号/重发邀请仍仅超管；
+ * 更新（昵称本人可改）、重置密码（自己）所有登录角色可进，字段级权限在 service 层判定。
+ */
 @Roles('super_admin', 'internal')
 @Controller('users')
 export class UsersController {
@@ -45,10 +49,13 @@ export class UsersController {
     return this.auth.createUser(body, actor);
   }
 
+  // T4：用户管理页对公司开放——方法级 @Roles 覆盖类级，customer_pm 可见（本公司账号，
+  // service 层按租户过滤）；customer_key_user/customer_user 仍拒绝
   @Get()
+  @Roles('super_admin', 'internal', 'customer_pm')
   @ZodResponse(UsersListResponseSchema)
-  listUsers(): Promise<UsersListResponse> {
-    return this.auth.listUsers();
+  listUsers(@CurrentUser() actor: AuthUser): Promise<UsersListResponse> {
+    return this.auth.listUsers(actor);
   }
 
   /**

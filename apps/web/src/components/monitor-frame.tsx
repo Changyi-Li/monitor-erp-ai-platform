@@ -19,7 +19,9 @@ import {
 } from '../data/monitor-menu';
 
 /** 平台角色专属入口（非平台角色隐藏；与侧边菜单同一过滤规则，供搜索下拉复用） */
-const PLATFORM_HREFS = new Set(['/users', '/agent', '/usage']);
+const PLATFORM_HREFS = new Set(['/agent', '/usage']);
+/** T4：客户 PM 专属入口（用户管理页对公司开放——customer_pm 可见本公司账号） */
+const CUSTOMER_PM_HREFS = new Set(['/users']);
 
 function filterCategories(
   categories: MonitorMenuCategory[],
@@ -27,8 +29,17 @@ function filterCategories(
 ): MonitorMenuCategory[] {
   if (isPlatformRole(role)) return categories;
   return categories
-    .map((cat) => ({ ...cat, items: cat.items.filter((i) => !PLATFORM_HREFS.has(i.href)) }))
+    .map((cat) => ({
+      ...cat,
+      items: cat.items.filter((i) => isItemVisible(i, role)),
+    }))
     .filter((cat) => cat.items.length > 0);
+}
+
+/** 客户侧菜单可见性：平台入口一律隐藏；客户 PM 专属入口仅 customer_pm 可见 */
+function isItemVisible(item: MonitorMenuItem, role: UserRole | undefined): boolean {
+  if (PLATFORM_HREFS.has(item.href)) return false;
+  return CUSTOMER_PM_HREFS.has(item.href) ? role === 'customer_pm' : true;
 }
 
 /**

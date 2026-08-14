@@ -23,7 +23,7 @@ import { connectOwner, resetTestDb } from './setup-test-db';
 /**
  * RBAC / 用户管理 / 项目边界 e2e（issue #13 验收）：
  * - 权限矩阵 API 级覆盖：角色 × 端点（建客户=超管、建项目=内部+、
- *   成员管理=内部/该项目 PM、用户/客户列表=内部+）
+ *   成员管理=内部/该项目 PM、用户/客户列表=内部/超管 + customer_pm 本公司账号（T4））
  * - 邀请链接首次设密全流程；PM 项目内邀请/停用（不可跨项目、不可升级角色）
  * - 客户跨项目 403（同租户非成员）；跨租户 404（回归 #12 语义）；内部全访问
  * - 审计日志：登录/设密/权限变更/项目读写在 audit_logs
@@ -495,7 +495,9 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
   });
 
   describe('平台管理：用户与客户列表', () => {
-    it('GET /api/users：内部 200；客户 403', async () => {
+    // T4：用户管理页对公司开放——customer_pm 也 200（本公司账号，见 T4 专属用例）；
+    // 非 PM 客户角色仍 403
+    it('GET /api/users：内部 200 全量（含客户账号）；customer_pm 200；key_user 403', async () => {
       const ok = await app.inject({
         method: 'GET',
         url: '/api/users',
@@ -503,11 +505,24 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       });
       expect(ok.statusCode).toBe(200);
       expect(UsersListResponseSchema.safeParse(ok.json()).success).toBe(true);
+      // 内部列表全量：平台账号与客户账号都可见（T4：customer_pm 才做租户过滤）
+      const internalEmails = (ok.json() as { users: { email: string }[] }).users.map(
+        (u) => u.email,
+      );
+      expect(internalEmails).toContain('admin@corp.test');
+      expect(internalEmails).toContain('pm@a.test');
+
+      const pmOk = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${pmToken}` },
+      });
+      expect(pmOk.statusCode).toBe(200);
 
       const denied = await app.inject({
         method: 'GET',
         url: '/api/users',
-        headers: { authorization: `Bearer ${pmToken}` },
+        headers: { authorization: `Bearer ${keyUserToken}` },
       });
       expect(denied.statusCode).toBe(403);
     });
@@ -948,6 +963,52 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       } finally {
         await owner3.end();
       }
+    });
+
+    // T4：用户管理页对公司开放——customer_pm 可见本公司账号（租户过滤）；
+    // 非 PM 客户角色仍 403；平台账号与跨租户账号不可见
+    it('T4 用户列表：customer_pm 200 仅本公司账号；key_user 403', async () => {
+      const pmList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${pmToken}` },
+      });
+      expect(pmList.statusCode).toBe(200);
+      expect(UsersListResponseSchema.safeParse(pmList.json()).success).toBe(true);
+      const pmEmails = (pmList.json() as { users: { email: string }[] }).users.map(
+        (u) => u.email,
+      );
+      // 本公司（cidA）账号可见：PM 本人 + key user
+      expect(pmEmails).toContain('pm@a.test');
+      expect(pmEmails).toContain('key@a.test');
+      // 平台账号与跨租户账号（客户 B 的 PM）不可见
+      expect(pmEmails).not.toContain('admin@corp.test');
+      expect(pmEmails).not.toContain('internal@corp.test');
+      expect(pmEmails).not.toContain('created@corp.test');
+      expect(pmEmails).not.toContain('pm-b@b.test');
+
+      // customer_key_user → 403（列表仅内部/超管/customer_pm）
+      const keyDenied = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${keyUserToken}` },
+      });
+      expect(keyDenied.statusCode).toBe(403);
+
+      // customer_user → 403（T3 用例收尾已把 t3cu 调回 customer_user，重新登录取最新角色）
+      const cuLogin = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 't3cu@corp.test', password },
+      });
+      expect(cuLogin.statusCode).toBe(200);
+      const cuToken = (cuLogin.json() as { accessToken: string }).accessToken;
+      const cuDenied = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${cuToken}` },
+      });
+      expect(cuDenied.statusCode).toBe(403);
     });
 
     // #39：安全页签后端 —— 重置密码（POST /api/users/:id/reset-password）
