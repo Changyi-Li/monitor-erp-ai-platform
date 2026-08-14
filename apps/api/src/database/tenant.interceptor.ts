@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
 import { lastValueFrom, of, type Observable } from 'rxjs';
+import { isCustomerRole } from '@monitor/shared';
 import type { AccessTokenPayload } from '../auth/token.service';
 import { IS_PUBLIC_KEY } from '../common/public.decorator';
 import { RAW_DB, type Database } from './database.module';
@@ -56,7 +57,7 @@ export class TenantInterceptor implements NestInterceptor {
       return next.handle(); // 防御性：Guard 已拦截未认证请求
     }
 
-    const isInternal = user.role !== 'customer';
+    const isInternal = !isCustomerRole(user.role);
     let tenantId: string | null = null;
     if (!isInternal) {
       const rows = await this.base

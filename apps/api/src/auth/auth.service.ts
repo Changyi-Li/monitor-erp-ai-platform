@@ -30,7 +30,7 @@ import {
   type UsersListResponse,
 } from '@monitor/contracts';
 import type { AuthUser } from '../common/current-user.decorator';
-import type { UserRole } from '@monitor/shared';
+import { isCustomerRole, type UserRole } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
 import { DRIZZLE, type Database } from '../database/database.module';
 import { refreshTokens, users, type UserRow } from '../database/schema';
@@ -375,7 +375,7 @@ export class AuthService {
       if (actor.sub === userId) {
         throw new ConflictException('不能修改自己的角色');
       }
-      if (existing.role === 'customer') {
+      if (isCustomerRole(existing.role as UserRole)) {
         throw new ConflictException('客户角色不可在此修改');
       }
     }

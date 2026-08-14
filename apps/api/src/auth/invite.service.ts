@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
+import type { UserRole } from '@monitor/shared';
 import type { Database } from '../database/database.module';
 import { users, type UserRow } from '../database/schema';
 import { PasswordService } from './password.service';
@@ -31,7 +32,14 @@ export class InviteService {
    */
   async createInvitedUser(
     db: Pick<Database, 'insert'>,
-    input: { email: string; displayName: string; inviteKind: 'customer' | null },
+    input: {
+      email: string;
+      displayName: string;
+      inviteKind: 'customer' | null;
+      // 账号平台角色（角色拆分 T1）：成员邀请 → customer_user（T2 参数化档位）；
+      // 客户创建联系人 → customer_pm（T3 语义，此处内联保持系统不破）
+      role?: UserRole;
+    },
   ): Promise<{ token: string; user: UserRow }> {
     const token = randomBytes(32).toString('base64url');
     const placeholderHash = await this.password.hash(randomBytes(24).toString('base64url'));
@@ -41,7 +49,7 @@ export class InviteService {
         email: input.email,
         passwordHash: placeholderHash,
         displayName: input.displayName,
-        role: 'customer',
+        role: input.role ?? 'customer_user',
         isActive: false,
         inviteTokenHash: sha256Hex(token),
         inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS),

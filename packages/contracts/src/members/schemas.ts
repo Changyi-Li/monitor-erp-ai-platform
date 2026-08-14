@@ -1,15 +1,16 @@
 import { z } from 'zod';
-import { PROJECT_ROLES } from '@monitor/shared';
+import { CUSTOMER_INVITE_ROLES, CUSTOMER_ROLES } from '@monitor/shared';
 
 /**
- * 项目成员（user + project + role，spec §2.1"项目成员 = 用户 + 项目 + 角色"）。
- * email/displayName 为 users 表联查结果，前端列表展示用。
+ * 项目成员（user + project，spec §2.1"项目成员 = 用户 + 项目 + 角色"）。
+ * 角色拆分后（T2）：project_members.role 退役，role 字段反映账号的平台角色
+ * （成员均为客户用户 → customer 三档）。email/displayName 为 users 表联查结果。
  */
 export const MemberSchema = z.object({
   id: z.uuid(),
   projectId: z.uuid(),
   userId: z.uuid(),
-  role: z.enum(PROJECT_ROLES),
+  role: z.enum(CUSTOMER_ROLES),
   isActive: z.boolean(),
   email: z.email(),
   displayName: z.string().trim().min(1).max(64),
@@ -26,7 +27,7 @@ export const PendingInviteSchema = z.object({
   userId: z.uuid(),
   email: z.email(),
   displayName: z.string().trim().min(1).max(64),
-  role: z.enum(PROJECT_ROLES),
+  role: z.enum(CUSTOMER_ROLES),
   /** 首次邀请时间（成员行创建时间） */
   invitedAt: z.iso.datetime(),
   /** 邀请过期时间（7 天；过期后由清理 worker 删除，链接失效） */
@@ -45,14 +46,17 @@ export const MembersListResponseSchema = z.object({
 export type MembersListResponse = z.output<typeof MembersListResponseSchema>;
 
 /**
- * 邀请成员（唯一建号入口）：内部可建任一项目角色；PM 只能 key_user/regular_user
- * （不可升级角色——project_manager 只能由内部授予）。inviteUrl 为 null 表示
- * 该邮箱已是同租户活跃用户，直接加入项目（无需设密）。
+ * 邀请成员（唯一建号入口）。role = 新账号的平台角色档位（customer_key_user /
+ * customer_user；customer_pm 档只能由建客户/超管产生，T3）。role 仅用于新账号
+ * 创建——已激活用户直接加入项目（inviteUrl=null，账号角色保持不动）。
+ * 成员管理权 = 平台角色 customer_pm（T2，权限判定完全基于平台角色）。
  */
 export const MemberInviteRequestSchema = z.object({
   email: z.email({ error: '邮箱格式不正确' }),
   displayName: z.string().trim().min(1).max(64).optional(),
-  role: z.enum(PROJECT_ROLES),
+  // 仅新账号创建消费；重发邀请（已存在账号）不改变角色，可省略（default 兜底）。
+  // 显式传 customer_pm 档 → 契约拒绝（该档只能由建客户/超管产生，T3）
+  role: z.enum(CUSTOMER_INVITE_ROLES).default('customer_user'),
 });
 export type MemberInviteRequest = z.output<typeof MemberInviteRequestSchema>;
 

@@ -134,6 +134,13 @@
       "when": 1786593455041,
       "tag": "0018_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786672405297,
+      "tag": "0019_auth",
+      "breakpoints": true
     }
   ]
 }

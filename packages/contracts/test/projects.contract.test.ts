@@ -56,7 +56,7 @@ describe('projects 契约：列表与详情响应', () => {
 
   it('详情响应为 { project, viewerRole }（viewerRole 三态：internal/项目角色/null）', () => {
     expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: 'internal' }).success).toBe(true);
-    expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: 'project_manager' }).success).toBe(true);
+    expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: 'customer_pm' }).success).toBe(true);
     expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: null }).success).toBe(true);
     expect(ProjectGetResponseSchema.safeParse({ project: validProject }).success).toBe(false);
     expect(ProjectGetResponseSchema.safeParse({ project: validProject, viewerRole: 'admin' }).success).toBe(false);

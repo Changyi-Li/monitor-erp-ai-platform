@@ -10,6 +10,7 @@ import {
 import { apiFetch, errorMessage } from '../lib/api';
 import { streamChat } from '../lib/agent';
 import { citationUrl, splitAnswerWithCitations } from '../lib/agent-labels';
+import { isCustomerRole } from '../lib/roles';
 import { useAuth } from './auth-provider';
 
 /**
@@ -30,7 +31,7 @@ export function ChatWidget() {
   const [error, setError] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
 
-  const internalOnly = status === 'authenticated' && !!user && user.role !== 'customer';
+  const internalOnly = status === 'authenticated' && !!user && !isCustomerRole(user.role);
 
   /** 打开面板：无会话则自动创建（demo：点开即聊） */
   async function handleToggle() {

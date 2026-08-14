@@ -122,7 +122,7 @@ describe('blueprints 契约：响应', () => {
       BlueprintGetResponseSchema.safeParse({ blueprint: null, viewerRole: 'internal' }).success,
     ).toBe(true);
     expect(
-      BlueprintGetResponseSchema.safeParse({ blueprint: validBlueprint, viewerRole: 'project_manager' })
+      BlueprintGetResponseSchema.safeParse({ blueprint: validBlueprint, viewerRole: 'customer_pm' })
         .success,
     ).toBe(true);
     expect(

@@ -57,7 +57,7 @@ export class UsersController {
    * （改别人仅超管；description/role 仅超管；role 另有 self/customer 防护）。
    */
   @Patch(':id')
-  @Roles('super_admin', 'internal', 'customer')
+  @Roles('super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user')
   @ZodResponse(UpdateUserResponseSchema)
   updateUser(
     // 非法 uuid → 400，避免 22P02 → 500（同客户 PATCH 模式）
@@ -90,7 +90,7 @@ export class UsersController {
   @Post(':id/reset-password')
   // 重置 = 更新语义（非创建资源），返回 200 而非 POST 默认 201
   @HttpCode(200)
-  @Roles('super_admin', 'internal', 'customer')
+  @Roles('super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user')
   @ZodResponse(ResetUserPasswordResponseSchema)
   resetUserPassword(
     @Param('id', uuidParam) id: string,

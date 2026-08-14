@@ -32,10 +32,17 @@ describe('auth 契约：UserSchema', () => {
     expect(UserSchema.safeParse(validUser).success).toBe(true);
   });
 
-  it('接受 RBAC 三态角色（super_admin/internal/customer），拒绝未知 role', () => {
-    for (const role of ['super_admin', 'internal', 'customer'] as const) {
+  it('接受 RBAC 五态角色（super_admin/internal/客户三档），拒绝未知 role', () => {
+    for (const role of [
+      'super_admin',
+      'internal',
+      'customer_pm',
+      'customer_key_user',
+      'customer_user',
+    ] as const) {
       expect(UserSchema.safeParse({ ...validUser, role }).success).toBe(true);
     }
+    expect(UserSchema.safeParse({ ...validUser, role: 'customer' }).success).toBe(false);
     expect(UserSchema.safeParse({ ...validUser, role: 'admin' }).success).toBe(false);
   });
 

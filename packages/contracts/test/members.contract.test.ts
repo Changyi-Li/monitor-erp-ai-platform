@@ -16,7 +16,7 @@ const validMember = {
   id: validUuid,
   projectId: validUuid,
   userId: validUuid,
-  role: 'key_user',
+  role: 'customer_key_user',
   isActive: true,
   email: 'alice@example.com',
   displayName: 'Alice',
@@ -28,11 +28,12 @@ describe('members 契约：MemberSchema', () => {
     expect(MemberSchema.safeParse(validMember).success).toBe(true);
   });
 
-  it('只接受三个项目角色', () => {
-    for (const role of ['project_manager', 'key_user', 'regular_user'] as const) {
+  it('只接受客户平台角色（T2：project_members.role 退役，成员角色 = users.role）', () => {
+    for (const role of ['customer_pm', 'customer_key_user', 'customer_user'] as const) {
       expect(MemberSchema.safeParse({ ...validMember, role }).success).toBe(true);
     }
     expect(MemberSchema.safeParse({ ...validMember, role: 'internal' }).success).toBe(false);
+    expect(MemberSchema.safeParse({ ...validMember, role: 'key_user' }).success).toBe(false);
     expect(MemberSchema.safeParse({ ...validMember, role: 'admin' }).success).toBe(false);
   });
 
@@ -42,20 +43,30 @@ describe('members 契约：MemberSchema', () => {
 });
 
 describe('members 契约：邀请', () => {
-  it('接受合法邀请请求', () => {
+  it('接受合法邀请请求（档位 = customer_key_user/customer_user；role 可省略）', () => {
     expect(
-      MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'regular_user' }).success,
+      MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'customer_user' }).success,
     ).toBe(true);
     expect(
-      MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'project_manager' }).success,
+      MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'customer_key_user' }).success,
     ).toBe(true);
+    // 省略 role → default customer_user（重发邀请场景不改变角色）
+    const omitted = MemberInviteRequestSchema.safeParse({ email: 'bob@example.com' });
+    expect(omitted.success).toBe(true);
+    if (omitted.success) {
+      expect(omitted.data.role).toBe('customer_user');
+    }
   });
 
-  it('拒绝非法邮箱 / 非法角色 / 空 displayName', () => {
-    expect(MemberInviteRequestSchema.safeParse({ email: 'x', role: 'regular_user' }).success).toBe(false);
+  it('拒绝非法邮箱 / customer_pm 档 / 非法角色 / 空 displayName', () => {
+    expect(MemberInviteRequestSchema.safeParse({ email: 'x', role: 'customer_user' }).success).toBe(false);
+    // customer_pm 档只能由建客户/超管产生（T3），邀请契约拒绝
+    expect(
+      MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'customer_pm' }).success,
+    ).toBe(false);
     expect(MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'admin' }).success).toBe(false);
     expect(
-      MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'key_user', displayName: '  ' }).success,
+      MemberInviteRequestSchema.safeParse({ email: 'bob@example.com', role: 'customer_key_user', displayName: '  ' }).success,
     ).toBe(false);
   });
 
@@ -90,7 +101,7 @@ describe('members 契约：PendingInviteSchema（待激活邀请，issue #42）'
     userId: validUuid,
     email: 'alice@example.com',
     displayName: 'Alice',
-    role: 'key_user',
+    role: 'customer_key_user',
     invitedAt: validIsoDate,
     expiresAt: '2026-08-12T02:30:00.000Z',
   };
@@ -99,9 +110,10 @@ describe('members 契约：PendingInviteSchema（待激活邀请，issue #42）'
     expect(PendingInviteSchema.safeParse(validPending).success).toBe(true);
   });
 
-  it('只接受三个项目角色（与 MemberSchema 一致）', () => {
-    expect(PendingInviteSchema.safeParse({ ...validPending, role: 'project_manager' }).success).toBe(true);
+  it('只接受客户平台角色（与 MemberSchema 一致）', () => {
+    expect(PendingInviteSchema.safeParse({ ...validPending, role: 'customer_user' }).success).toBe(true);
     expect(PendingInviteSchema.safeParse({ ...validPending, role: 'internal' }).success).toBe(false);
+    expect(PendingInviteSchema.safeParse({ ...validPending, role: 'key_user' }).success).toBe(false);
   });
 
   it('拒绝非法邮箱 / 非法时间', () => {

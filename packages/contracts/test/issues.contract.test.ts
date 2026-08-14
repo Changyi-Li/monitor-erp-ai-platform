@@ -101,7 +101,7 @@ describe('issues 契约：列表与详情', () => {
     expect(
       IssueGetResponseSchema.safeParse({
         issue: validIssue,
-        viewerRole: 'project_manager',
+        viewerRole: 'customer_pm',
         comments: [comment],
         links: [link],
       }).success,

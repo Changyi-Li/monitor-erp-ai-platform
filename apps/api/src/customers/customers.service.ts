@@ -70,6 +70,8 @@ export class CustomersService {
           // 由邮箱唯一性自然保证——同一邮箱不会重复建号）
           displayName: email,
           inviteKind: 'customer',
+          // 角色拆分 T3 语义：建客户时的联系人为客户项目经理（客户侧默认管理员）
+          role: 'customer_pm',
         });
         await tx
           .insert(userTenants)

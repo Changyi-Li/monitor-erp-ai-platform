@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import { useAuth } from '../components/auth-provider';
-import { userRoleLabel } from '../lib/roles';
+import { isCustomerRole, userRoleLabel } from '../lib/roles';
 
 /**
  * 根页面：登录后显示 Monitor 风格「起始页 widget 桌面」
@@ -103,7 +103,7 @@ export default function HomePage() {
   }
 
   // 平台角色：全部卡片；客户角色：仅客户/项目/知识库
-  const widgets = user.role === 'customer' ? commonWidgets : [...commonWidgets, ...platformWidgets];
+  const widgets = isCustomerRole(user.role) ? commonWidgets : [...commonWidgets, ...platformWidgets];
 
   return (
     <div className="monitor-start-page" data-testid="start-page">

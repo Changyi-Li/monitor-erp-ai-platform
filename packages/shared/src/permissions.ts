@@ -1,19 +1,13 @@
-import type { ProjectRole, UserRole } from './constants';
+import { USER_ROLES, type UserRole } from './constants';
 
 /**
- * 功能角色：权限矩阵的列（spec §2.4）。
- * - internal 覆盖实施/开发/售后/市场/销售（Phase 1 功能权限相同，组织标签）
- * - super_admin = 内部全权限 + 平台管理（RolesGuard 层实现 super_admin ⊇ internal）
- * - 客户侧角色为项目级（project_members.role）
+ * 功能角色：权限矩阵的列（spec §2.4）。角色拆分后（T1/T2）权限判定完全基于
+ * 平台角色——内部侧为 super_admin / internal（RolesGuard 层实现 super_admin ⊇
+ * internal），客户侧为 customer_pm / customer_key_user / customer_user；
+ * project_members.role 已退役（迁移 0020），不再有项目级角色维度。
  */
-export const FUNCTIONAL_ROLES = [
-  'super_admin',
-  'internal',
-  'project_manager',
-  'key_user',
-  'regular_user',
-] as const;
-export type FunctionalRole = (typeof FUNCTIONAL_ROLES)[number];
+export const FUNCTIONAL_ROLES = USER_ROLES;
+export type FunctionalRole = UserRole;
 
 /** 平台权限点（Phase 1，spec §2.4 十项 + 本期强制的基础设施权限） */
 export const PERMISSIONS = [
@@ -43,23 +37,23 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 /**
- * 权限矩阵（spec §2.4）：功能 → 允许的角色集合。
+ * 权限矩阵（spec §2.4）：功能 → 允许的平台角色集合。
  * 本期已强制：project:create / member:manage / user:manage / customer:create /
  * blueprint:view + blueprint:manage（#16 蓝图，维护仅内部）；
  * phase:view + phase:manage + risk:manage（#17 实施阶段/风险，维护仅内部）；
  * 其余（meeting/issue/kb/manual/agent）定义先行，后续模块复用 can()。
  */
 export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = {
-  'blueprint:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
+  'blueprint:view': ['super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user'],
   'blueprint:manage': ['super_admin', 'internal'], // spec §2.4 蓝图维护仅内部/超管
-  'phase:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
+  'phase:view': ['super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user'],
   'phase:manage': ['super_admin', 'internal'], // spec §2.4 line 81 阶段维护仅内部/超管
   'risk:manage': ['super_admin', 'internal'], // spec §2.4 line 81 风险维护仅内部/超管（查看同 phase:view）
-  'meeting:view': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
+  'meeting:view': ['super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user'],
   'meeting:manage': ['super_admin', 'internal'], // spec §2.4 会议纪要维护仅内部/超管（查看=meeting:view 全员）
-  'issue:create': ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user'],
-  'issue:comment': ['super_admin', 'internal', 'project_manager', 'key_user'],
-  'issue:manage': ['super_admin', 'internal', 'project_manager'],
+  'issue:create': ['super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user'],
+  'issue:comment': ['super_admin', 'internal', 'customer_pm', 'customer_key_user'],
+  'issue:manage': ['super_admin', 'internal', 'customer_pm'],
   'issue:transition': ['super_admin', 'internal'],
   'customer:manage': ['super_admin', 'internal'],
   'kb:edit': ['super_admin', 'internal'],
@@ -67,7 +61,7 @@ export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = 
   'agent:use': ['super_admin', 'internal'],
   'rag:view': ['super_admin', 'internal'], // #21 RAG 同步状态/调试台仅内部（spec 用户故事 50）
   'project:create': ['super_admin', 'internal'],
-  'member:manage': ['super_admin', 'internal', 'project_manager'],
+  'member:manage': ['super_admin', 'internal', 'customer_pm'], // 客户侧管理资格 = 平台角色 customer_pm（T2）
   'user:manage': ['super_admin', 'internal'],
   'customer:create': ['super_admin'],
   'customer:update': ['super_admin', 'internal'],
@@ -75,11 +69,11 @@ export const PERMISSION_MATRIX: Record<Permission, readonly FunctionalRole[]> = 
 
 /** 角色是否拥有该权限。role 为 null（无成员关系/未解析）→ 无权限 */
 export function can(
-  role: FunctionalRole | UserRole | ProjectRole | null | undefined,
+  role: FunctionalRole | null | undefined,
   permission: Permission,
 ): boolean {
   if (!role) {
     return false;
   }
-  return PERMISSION_MATRIX[permission].includes(role as FunctionalRole);
+  return PERMISSION_MATRIX[permission].includes(role);
 }

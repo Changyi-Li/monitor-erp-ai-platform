@@ -139,7 +139,7 @@ describe('minutes 契约：响应', () => {
     expect(MinutesListResponseSchema.safeParse({ minutes: [validMinute], viewerRole: 'other' }).success).toBe(
       false,
     );
-    expect(MinuteGetResponseSchema.safeParse({ minute: validMinute, viewerRole: 'project_manager' }).success).toBe(
+    expect(MinuteGetResponseSchema.safeParse({ minute: validMinute, viewerRole: 'customer_pm' }).success).toBe(
       true,
     );
     expect(MinuteResponseSchema.safeParse({ minute: validMinute }).success).toBe(true);

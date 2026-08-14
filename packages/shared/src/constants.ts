@@ -1,13 +1,29 @@
 /**
- * 平台粗粒度角色（JWT 级，TenantInterceptor 以 role !== 'customer' 判定内部旁路）。
- * 客户用户的细粒度角色（PM/Key User/普通用户）按项目存 project_members，不进 JWT。
+ * 平台粗粒度角色（JWT 级，TenantInterceptor 以 CUSTOMER_ROLES 判定内部旁路）。
+ * 客户角色三档（客户项目经理/关键用户/普通用户，spec §2.1），权限判定全走平台角色；
+ * project_members.role 已退役（见迁移 0019/0020，成员管理权 = customer_pm）。
  */
-export const USER_ROLES = ['super_admin', 'internal', 'customer'] as const;
+export const USER_ROLES = [
+  'super_admin',
+  'internal',
+  'customer_pm',
+  'customer_key_user',
+  'customer_user',
+] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-/** 项目成员角色（spec §2.1 客户侧），按项目分配 */
-export const PROJECT_ROLES = ['project_manager', 'key_user', 'regular_user'] as const;
-export type ProjectRole = (typeof PROJECT_ROLES)[number];
+/** 客户系角色：非内部、走租户 RLS 旁路 */
+export const CUSTOMER_ROLES = ['customer_pm', 'customer_key_user', 'customer_user'] as const;
+export type CustomerRole = (typeof CUSTOMER_ROLES)[number];
+
+/** 成员邀请可选档位（账号平台角色；customer_pm 档只能由建客户/超管产生） */
+export const CUSTOMER_INVITE_ROLES = ['customer_key_user', 'customer_user'] as const;
+export type CustomerInviteRole = (typeof CUSTOMER_INVITE_ROLES)[number];
+
+/** 平台角色是否客户系（内部旁路判定，TenantInterceptor/@Roles/服务层共用） */
+export function isCustomerRole(role: UserRole): boolean {
+  return (CUSTOMER_ROLES as readonly string[]).includes(role);
+}
 
 /** 问题类型（issue.type，spec §3.5） */
 export const ISSUE_TYPES = ['bug', 'feature', 'question'] as const;

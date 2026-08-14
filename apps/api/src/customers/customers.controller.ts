@@ -38,7 +38,7 @@ export class CustomersController {
     return this.customers.create(actor, body);
   }
 
-  @Roles('super_admin', 'internal', 'customer')
+  @Roles('super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user')
   @Get()
   @ZodResponse(CustomersListResponseSchema)
   list(@Query('search') search?: string): Promise<CustomersListResponse> {

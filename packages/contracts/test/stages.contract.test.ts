@@ -157,7 +157,7 @@ describe('stages 契约：响应', () => {
       false,
     );
     expect(StageResponseSchema.safeParse({ stage: validStage }).success).toBe(true);
-    expect(RisksListResponseSchema.safeParse({ risks: [validRisk], viewerRole: 'project_manager' }).success).toBe(
+    expect(RisksListResponseSchema.safeParse({ risks: [validRisk], viewerRole: 'customer_pm' }).success).toBe(
       true,
     );
     expect(RiskResponseSchema.safeParse({ risk: validRisk }).success).toBe(true);
