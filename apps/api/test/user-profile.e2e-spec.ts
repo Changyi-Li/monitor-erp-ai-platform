@@ -308,7 +308,7 @@ describe('User profile e2e：昵称编辑 + 客户邀请链接重发', () => {
         method: 'POST',
         url: `/api/projects/${projectId}/members`,
         headers: { authorization: `Bearer ${internalToken}` },
-        payload: { email: 'member-x@tenant-a.test', role: 'regular_user' },
+        payload: { email: 'member-x@tenant-a.test', role: 'customer_user' },
       });
       expect(invited.statusCode).toBe(201);
 

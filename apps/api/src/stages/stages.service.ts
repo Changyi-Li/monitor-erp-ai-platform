@@ -23,7 +23,7 @@ import {
   type StageUpdateRequest,
   type StagesListResponse,
 } from '@monitor/contracts';
-import { can, type FunctionalRole, STAGE_TEMPLATES } from '@monitor/shared';
+import { can, STAGE_TEMPLATES } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/current-user.decorator';
 import { DRIZZLE, type Database } from '../database/database.module';
@@ -62,7 +62,7 @@ export class StagesService {
     if (ctx.isInternal) {
       return 'internal';
     }
-    const role = await this.members.resolveProjectRole(projectId, ctx.userId);
+    const role = await this.members.resolveViewerRole(projectId, ctx.userId);
     if (!role) {
       throw new ForbiddenException('你不是该项目成员');
     }
@@ -114,7 +114,7 @@ export class StagesService {
     permission: 'phase:view' | 'phase:manage' | 'risk:manage',
     message: string,
   ): void {
-    if (!can(viewerRole as FunctionalRole, permission)) {
+    if (!can(viewerRole, permission)) {
       throw new ForbiddenException(message);
     }
   }

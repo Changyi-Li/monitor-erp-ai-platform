@@ -145,10 +145,17 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
 
     const pmInvite = await inviteMember(internalToken, projectAId, {
       email: 'pm@a.test',
-      role: 'project_manager',
+      role: 'customer_key_user',
     });
     expect(pmInvite.status).toBe(201);
     expect(pmInvite.inviteUrl).toContain('/invite?token=');
+    // T2：成员管理权 = 平台角色 customer_pm——升级账号后再激活登录（JWT 携带新角色）
+    const ownerUp = connectOwner();
+    try {
+      await ownerUp`update users set role = 'customer_pm' where email = 'pm@a.test'`;
+    } finally {
+      await ownerUp.end();
+    }
     pmToken = await setPasswordAndLogin('pm@a.test', pmInvite.inviteUrl!);
     const me = await app.inject({
       method: 'GET',
@@ -157,10 +164,10 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
     });
     pmUserId = (me.json() as { user: { id: string } }).user.id;
 
-    // Key User 邀请 → 设密登录
+    // Key User 邀请 → 设密登录（customer_key_user 档）
     const keyInvite = await inviteMember(pmToken, projectAId, {
       email: 'key@a.test',
-      role: 'key_user',
+      role: 'customer_key_user',
     });
     expect(keyInvite.status).toBe(201);
     keyUserToken = await setPasswordAndLogin('key@a.test', keyInvite.inviteUrl!);
@@ -180,9 +187,9 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       projectB1Id = b1.id as string;
       // 客户 B 的 PM（用于跨租户 409 与 PM-A 访问 B1 的 404 断言）
       const [userB] = await owner2`insert into users (email, password_hash, display_name, role, is_active)
-        values ('pm-b@b.test', 'x', 'PM-B', 'customer', true) returning id`;
+        values ('pm-b@b.test', 'x', 'PM-B', 'customer_pm', true) returning id`;
       await owner2`insert into user_tenants (user_id, customer_id) values (${userB.id}, ${cidB})`;
-      await owner2`insert into project_members (project_id, user_id, role) values (${b1.id}, ${userB.id}, 'project_manager')`;
+      await owner2`insert into project_members (project_id, user_id) values (${b1.id}, ${userB.id})`;
     } finally {
       await owner2.end();
     }
@@ -270,7 +277,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
     it('已激活用户二次设密 → 400（token 一次性）', async () => {
       const invite = await inviteMember(internalToken, projectAId, {
         email: 'pm@a.test',
-        role: 'project_manager',
+        role: 'customer_user',
       });
       expect(invite.status).toBe(409); // 已激活重复邀请也 409
       const res = await app.inject({
@@ -281,19 +288,19 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(res.statusCode).toBe(400);
     });
 
-    it('PM 登录后 me 正常，角色为 customer', async () => {
+    it('PM 登录后 me 正常，角色为 customer_pm（T2：管理权 = 平台角色）', async () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/auth/me',
         headers: { authorization: `Bearer ${pmToken}` },
       });
       expect(res.statusCode).toBe(200);
-      expect((res.json() as { user: { role: string } }).user.role).toBe('customer');
+      expect((res.json() as { user: { role: string } }).user.role).toBe('customer_pm');
     });
   });
 
   describe('权限矩阵：成员管理端点（角色 × 功能）', () => {
-    it('PM 项目列表只见自己成员的项目；详情 viewerRole=project_manager', async () => {
+    it('PM 项目列表只见自己成员的项目；详情 viewerRole=customer_pm', async () => {
       const list = await app.inject({
         method: 'GET',
         url: '/api/projects',
@@ -313,7 +320,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(detail.statusCode).toBe(200);
       const parsed = ProjectGetResponseSchema.safeParse(detail.json());
       expect(parsed.success).toBe(true);
-      expect(parsed.data!.viewerRole).toBe('key_user');
+      expect(parsed.data!.viewerRole).toBe('customer_key_user');
 
       const list = await app.inject({
         method: 'GET',
@@ -324,7 +331,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
 
       const invite = await inviteMember(keyUserToken, projectAId, {
         email: 'nobody@a.test',
-        role: 'regular_user',
+        role: 'customer_user',
       });
       expect(invite.status).toBe(403);
 
@@ -337,24 +344,24 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(patch.statusCode).toBe(403);
     });
 
-    it('PM 邀请 project_manager → 403（不可升级角色/不可建 PM）', async () => {
+    it('PM 邀请 customer_pm 档 → 400（该档只能由建客户/超管产生，契约层拒绝）', async () => {
       const res = await inviteMember(pmToken, projectAId, {
         email: 'pm2@a.test',
-        role: 'project_manager',
+        role: 'customer_pm',
       });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(400);
     });
 
     it('PM 邀请他租户已有用户 → 409；邀请内部邮箱 → 400', async () => {
       const cross = await inviteMember(pmToken, projectAId, {
         email: 'pm-b@b.test',
-        role: 'regular_user',
+        role: 'customer_user',
       });
       expect(cross.status).toBe(409);
 
       const internal = await inviteMember(pmToken, projectAId, {
         email: 'internal@corp.test',
-        role: 'regular_user',
+        role: 'customer_user',
       });
       expect(internal.status).toBe(400);
     });
@@ -362,7 +369,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
     it('重复邀请已激活成员 → 409；同租户已激活用户直接加入（inviteUrl=null）', async () => {
       const dup = await inviteMember(pmToken, projectAId, {
         email: 'key@a.test',
-        role: 'key_user',
+        role: 'customer_key_user',
       });
       expect(dup.status).toBe(409);
 
@@ -371,7 +378,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       let invitedEmail = '';
       try {
         const [u] = await owner`insert into users (email, password_hash, display_name, role, is_active)
-          values ('existing@a.test', 'x', '已有用户', 'customer', true) returning id, email`;
+          values ('existing@a.test', 'x', '已有用户', 'customer_user', true) returning id, email`;
         await owner`insert into user_tenants (user_id, customer_id) values (${u.id}, ${cidA})`;
         invitedEmail = u.email as string;
       } finally {
@@ -379,7 +386,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       }
       const res = await inviteMember(pmToken, projectAId, {
         email: invitedEmail,
-        role: 'regular_user',
+        role: 'customer_user',
       });
       expect(res.status).toBe(201);
       expect(res.inviteUrl).toBeNull();
@@ -574,12 +581,12 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       });
       expect(dupName.statusCode).toBe(409);
 
-      // 角色只能是 super_admin/internal（customer 被契约拒绝）→ 400
+      // 角色只能是 super_admin/internal（客户角色不可经内部建号端点授予）→ 400
       const badRole = await app.inject({
         method: 'POST',
         url: '/api/users',
         headers: { authorization: `Bearer ${superAdminToken}` },
-        payload: { email: 'badrole@corp.test', password: 'NewPass123', role: 'customer' },
+        payload: { email: 'badrole@corp.test', password: 'NewPass123', role: 'customer_pm' },
       });
       expect(badRole.statusCode).toBe(400);
     });
@@ -790,12 +797,12 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(adminUser).toBeTruthy();
       expect(pmUser).toBeTruthy();
 
-      // 非法角色（customer 不可在此赋值）→ 400
+      // 非法角色（客户角色不可在此赋值，T3 放开客户三档互调）→ 400
       const badRole = await app.inject({
         method: 'PATCH',
         url: `/api/users/${target.id}`,
         headers: { authorization: `Bearer ${superAdminToken}` },
-        payload: { role: 'customer' },
+        payload: { role: 'customer_pm' },
       });
       expect(badRole.statusCode).toBe(400);
 
@@ -1086,7 +1093,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         // 权限变更 actor 指向操作者
         const deactivate = rows.find((r) => r.action === 'member.deactivate');
         expect(deactivate!.actor_user_id).toBe(pmUserId);
-        expect(deactivate!.actor_role).toBe('customer');
+        expect(deactivate!.actor_role).toBe('customer_pm');
         // 项目创建 actor 指向内部用户
         const create = rows.find((r) => r.action === 'project.create');
         expect(create!.actor_user_id).toBe(internalUserId);

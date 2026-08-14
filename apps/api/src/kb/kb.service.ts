@@ -17,7 +17,7 @@ import {
   type KbVersionsResponse,
   type KbViewerRole,
 } from '@monitor/contracts';
-import { can, type FunctionalRole } from '@monitor/shared';
+import { can } from '@monitor/shared';
 import { STORAGE } from '../adapters/storage/storage.module';
 import type { StoragePort } from '../adapters/storage/storage.port';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
@@ -82,9 +82,13 @@ export class KbService {
     return 'customer';
   }
 
-  /** 维护权限（仅内部：kb:edit，spec §2.4） */
+  /**
+   * 维护权限（仅内部：kb:edit 矩阵 = super_admin/internal，spec §2.4）。
+   * KbViewerRole 只取 'internal'/'customer' 两值（全局域，非项目域），
+   * 'customer' 永不匹配——直接比较等价且免 cast。
+   */
   private assertCanManage(viewerRole: KbViewerRole, message: string): void {
-    if (!can(viewerRole as FunctionalRole, 'kb:edit')) {
+    if (viewerRole !== 'internal') {
       throw new ForbiddenException(message);
     }
   }

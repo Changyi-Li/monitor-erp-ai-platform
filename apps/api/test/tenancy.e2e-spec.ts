@@ -1,4 +1,4 @@
-import {
+﻿import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
@@ -90,7 +90,7 @@ describe('Tenancy e2e：多租户 RLS 隔离', () => {
 
     const owner = connectOwner();
     try {
-      await owner`update users set role = 'customer' where id in (${userIdA}, ${userIdB}, ${userIdC})`;
+      await owner`update users set role = 'customer_user' where id in (${userIdA}, ${userIdB}, ${userIdC})`;
       const [customerA] = await owner`insert into customers (name) values ('客户A') returning id`;
       const [customerB] = await owner`insert into customers (name) values ('客户B') returning id`;
       cidA = customerA.id as string;
@@ -103,9 +103,9 @@ describe('Tenancy e2e：多租户 RLS 隔离', () => {
       const [b1] = await owner`insert into projects (tenant_id, name) values (${cidB}, 'B1') returning id`;
       projectA1Id = a1.id as string;
       projectB1Id = b1.id as string;
-      // RBAC #13：客户 A 的可见范围 = active 成员项目（A1 regular / A2 key_user）
-      await owner`insert into project_members (project_id, user_id, role) values
-        (${a1.id}, ${userIdA}, 'regular_user'), (${a2.id}, ${userIdA}, 'key_user')`;
+      // RBAC #13：客户 A 的可见范围 = active 成员项目（A1 / A2 两个成员行）
+      await owner`insert into project_members (project_id, user_id) values
+        (${a1.id}, ${userIdA}), (${a2.id}, ${userIdA})`;
     } finally {
       await owner.end();
     }
@@ -153,7 +153,7 @@ describe('Tenancy e2e：多租户 RLS 隔离', () => {
       expect(status).toBe(200);
       const parsed = ProjectGetResponseSchema.safeParse(body);
       expect(parsed.success).toBe(true);
-      expect(parsed.data!.viewerRole).toBe('regular_user');
+      expect(parsed.data!.viewerRole).toBe('customer_user');
     });
 
     it('非法 uuid → 400（避免 22P02 → 500）', async () => {

@@ -17,7 +17,7 @@ import {
 } from '@monitor/contracts';
 import { apiFetch, errorMessage } from '../../lib/api';
 import { useAuth } from '../../components/auth-provider';
-import { userRoleLabel } from '../../lib/roles';
+import { isCustomerRole, userRoleLabel } from '../../lib/roles';
 import type { UserRole } from '@monitor/shared';
 
 /**
@@ -118,11 +118,13 @@ export default function UsersPage() {
     return list.filter((u) => u.displayName.toLowerCase().includes(q));
   }, [data, nameQuery]);
 
-  // accordion 分组（grilling）：客户用户 vs 内部与管理员（超管归内部组）
+  // accordion 分组（角色拆分 T1）：客户三档（项目经理/关键用户/普通用户）vs 内部与管理员
   const groupedUsers = useMemo(
     () => ({
-      customer: filteredUsers.filter((u) => u.role === 'customer'),
-      platform: filteredUsers.filter((u) => u.role !== 'customer'),
+      customer_pm: filteredUsers.filter((u) => u.role === 'customer_pm'),
+      customer_key_user: filteredUsers.filter((u) => u.role === 'customer_key_user'),
+      customer_user: filteredUsers.filter((u) => u.role === 'customer_user'),
+      platform: filteredUsers.filter((u) => !isCustomerRole(u.role)),
     }),
     [filteredUsers],
   );
@@ -152,9 +154,9 @@ export default function UsersPage() {
   async function handleSaveAll(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedUser) return;
-    // 角色变更仅当目标非自己、非 customer（后端对应 409 防护）时随描述一起提交
+    // 角色变更仅当目标非自己、非客户系角色（后端对应 409 防护；T3 放开客户三档互调）时随描述一起提交
     const canChangeRole =
-      isSuperAdmin && selectedUser.id !== user?.id && selectedUser.role !== 'customer';
+      isSuperAdmin && selectedUser.id !== user?.id && !isCustomerRole(selectedUser.role);
     const roleChanged = canChangeRole && roleDraft !== selectedUser.role;
     setSaveError('');
     setSaveOk('');
@@ -402,7 +404,9 @@ export default function UsersPage() {
             ) : (
               (
                 [
-                  ['customer', '客户用户', groupedUsers.customer],
+                  ['customer_pm', '客户项目经理', groupedUsers.customer_pm],
+                  ['customer_key_user', '客户关键用户', groupedUsers.customer_key_user],
+                  ['customer_user', '客户普通用户', groupedUsers.customer_user],
                   ['platform', '内部与管理员', groupedUsers.platform],
                 ] as const
               ).map(([key, label, users]) => {
@@ -441,7 +445,7 @@ export default function UsersPage() {
                                 <div className="up-item-name">{u.displayName}</div>
                                 <div className="up-item-sub">
                                   {u.email} · {userRoleLabel(u.role)}
-                                  {u.role === 'customer' && !u.isActive ? ' · 未激活' : ''}
+                                  {isCustomerRole(u.role) && !u.isActive ? ' · 未激活' : ''}
                                 </div>
                               </button>
                             </li>
@@ -515,7 +519,7 @@ export default function UsersPage() {
               {/* 邀请链接重发（grilling：客户丢失链接 → 重新生成 + 复制）。
                   仅超管可见；重发语义 = 旧链接立即失效、有效期刷新 7 天 */}
               {isSuperAdmin &&
-                selectedUser.role === 'customer' &&
+                isCustomerRole(selectedUser.role) &&
                 !selectedUser.isActive &&
                 selectedUser.inviteKind === 'customer' && (
                 <div className="up-card" style={{ marginTop: 12 }}>
@@ -713,7 +717,11 @@ export default function UsersPage() {
                         ? '超级管理员：全部功能 + 平台管理（用户/客户）。'
                         : selectedUser.role === 'internal'
                           ? '内部用户：全部业务功能与 AI 工具。'
-                          : '客户角色：仅客户/项目/知识库。'}
+                          : selectedUser.role === 'customer_pm'
+                            ? '客户项目经理：管理本公司的项目成员与客户账号。'
+                            : selectedUser.role === 'customer_key_user'
+                              ? '客户关键用户：项目问题评论、知识库与实施协作。'
+                              : '客户普通用户：查看被授权项目与知识库，提交问题。'}
                     </p>
                     {isSuperAdmin ? (
                       // #38：超管可改平台角色（self 与 customer 不可改，用户已拍板）
@@ -721,7 +729,7 @@ export default function UsersPage() {
                         <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light)' }}>
                           不能修改自己的角色
                         </p>
-                      ) : selectedUser.role === 'customer' ? (
+                      ) : isCustomerRole(selectedUser.role) ? (
                         <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light)' }}>
                           客户角色不可在此修改
                         </p>
@@ -764,11 +772,14 @@ export default function UsersPage() {
                     <div className="up-card-body" style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--mwc-text)' }}>
                       <p style={{ margin: 0, fontWeight: 600 }}>权限范围（按角色推导）</p>
                     <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
-                      {selectedUser.role === 'customer' ? (
+                      {isCustomerRole(selectedUser.role) ? (
                         <>
                           <li>客户管理（仅本客户相关）</li>
                           <li>项目：查看与参与项目</li>
                           <li>知识库：已发布文档</li>
+                          {selectedUser.role === 'customer_pm' && (
+                            <li>成员管理：管理本公司项目成员与客户账号</li>
+                          )}
                         </>
                       ) : (
                         <>

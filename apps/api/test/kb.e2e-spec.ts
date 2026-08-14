@@ -1,4 +1,4 @@
-import {
+﻿import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
@@ -186,8 +186,8 @@ describe('KB e2e：内部知识库', () => {
     // 知识库全局域：客户用户只需 role=customer（+ 各归其租户），无需项目成员
     const owner = connectOwner();
     try {
-      await owner`update users set role = 'customer' where id = ${customerA.id}`;
-      await owner`update users set role = 'customer' where id = ${customerB.id}`;
+      await owner`update users set role = 'customer_user' where id = ${customerA.id}`;
+      await owner`update users set role = 'customer_user' where id = ${customerB.id}`;
       const [customerRowA] = await owner`insert into customers (name) values ('客户A') returning id`;
       const [customerRowB] = await owner`insert into customers (name) values ('客户B') returning id`;
       await owner`insert into user_tenants (user_id, customer_id) values (${customerA.id}, ${customerRowA.id})`;

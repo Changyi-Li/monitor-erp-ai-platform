@@ -101,7 +101,7 @@ export class ProjectsService {
 
     let viewerRole: ProjectViewerRole = 'internal';
     if (!ctx.isInternal) {
-      const role = await this.members.resolveProjectRole(id, ctx.userId);
+      const role = await this.members.resolveViewerRole(id, ctx.userId);
       if (!role) {
         throw new ForbiddenException('你不是该项目成员');
       }

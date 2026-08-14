@@ -6,7 +6,7 @@ import {
   type RagSyncsQuery,
   type RagSyncsResponse,
 } from '@monitor/contracts';
-import { can, type FunctionalRole } from '@monitor/shared';
+import { can } from '@monitor/shared';
 import { ForbiddenException } from '@nestjs/common';
 import { MQ } from '../adapters/mq/mq.module';
 import type { MessageQueuePort } from '../adapters/mq/message-queue.port';
@@ -168,7 +168,7 @@ export class RagSyncService {
 
   /** rag:view = 仅内部（spec 用户故事 50；无项目上下文，直接按 JWT 角色） */
   assertRagView(actor: AuthUser): void {
-    if (!can(actor.role as FunctionalRole, 'rag:view')) {
+    if (!can(actor.role, 'rag:view')) {
       throw new ForbiddenException('仅内部用户可访问 RAG 调试台');
     }
   }

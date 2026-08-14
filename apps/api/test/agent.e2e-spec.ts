@@ -1,4 +1,4 @@
-import {
+﻿import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
@@ -155,13 +155,13 @@ describe('Agent e2e：内部客服 AI', () => {
 
     const owner = connectOwner();
     try {
-      await owner`update users set role = 'customer' where id = ${customer.id}`;
+      await owner`update users set role = 'customer_user' where id = ${customer.id}`;
       const [c] = await owner`insert into customers (name) values ('客户A') returning id`;
       await owner`insert into user_tenants (user_id, customer_id) values (${customer.id}, ${c.id})`;
       const project = await owner`insert into projects (tenant_id, name) values (${c.id}, 'P-A1') returning id`;
       projectAId = project[0].id as string;
       // 项目成员（蓝图创建需要）
-      await owner`insert into project_members (project_id, user_id, role) values (${project[0].id}, ${internal.id}, 'project_manager')`;
+      await owner`insert into project_members (project_id, user_id) values (${project[0].id}, ${internal.id})`;
     } finally {
       await owner.end();
     }

@@ -11,7 +11,7 @@ Status: accepted
 - **租户隔离**（ADR-0001）：DB 层 RLS，客户级。跨租户 → 404（防存在性探测）。
 - **项目边界**（本期）：应用层，客户用户只见 active 成员项目。同租户非成员 → **403**（跨项目访问），同租户成员 → 200。
 
-403 vs 404 判定在 service 层同址完成（租户行查找 404 → 成员解析 403），不拆到 guard——**Nest guard 在 TenantInterceptor 之前运行**，guard 内查库会落在租户事务外（DRIZZLE 代理无 ALS 上下文回退 base）且与服务重复查询。因此项目级权限全部走 `MembersService.resolveProjectRole()`（请求事务内、受限角色连接、RLS 兜底同租户）；`RolesGuard` 只做纯 JWT 的平台粗粒度检查（零 DB）。
+403 vs 404 判定在 service 层同址完成（租户行查找 404 → 成员解析 403），不拆到 guard——**Nest guard 在 TenantInterceptor 之前运行**，guard 内查库会落在租户事务外（DRIZZLE 代理无 ALS 上下文回退 base）且与服务重复查询。因此项目级权限全部走 `MembersService.resolveViewerRole()`（请求事务内、受限角色连接、RLS 兜底同租户）；`RolesGuard` 只做纯 JWT 的平台粗粒度检查（零 DB）。
 
 ## 成员与邀请
 
@@ -35,3 +35,7 @@ PM 停用只翻 `project_members.is_active`（用户可能在其他项目 active
 - 邀请链接明文出现在 URL/代理日志（一次性 + 7 天过期缓解；后续加固可加短期 PIN/二次验证）
 - 内部组织标签（实施/开发/售后/市场/销售）Phase 1 功能权限相同，未落字段（需要时加 `org_label` 即可）
 - `GET /api/projects/:id` 返回 `viewerRole` 供前端显隐管理入口；成员列表/管理仅内部或该项目 PM 可见
+
+## 修订：T1/T2 角色模型合并为平台角色（superseded 上述「角色模型」段）
+
+客户细粒度角色不再存 `project_members.role`（migration 0020 DROP COLUMN + check），并入平台角色：`USER_ROLES = ['super_admin','internal','customer_pm','customer_key_user','customer_user']`，随 JWT 签发，权限判定（`can()` 矩阵、`TenantInterceptor.isInternal`、各 service 的 viewerRole 解析）完全基于平台角色。项目成员表只存 `is_active` 成员关系；`viewerRole = users.role`（join projectMembers+users）。邀请入参角色收窄为 `customer_key_user|customer_user`（新账号即获对应平台角色；PM 档由超管调整）。成员管理权 `member:manage = ['super_admin','internal','customer_pm']`（客户 PM 可在自己项目内邀请/取消/停用，旧约束「PM 只能授 key_user/regular_user」「不能停 PM/自己」按平台角色重述：不能停 `customer_pm` 成员）。

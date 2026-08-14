@@ -218,7 +218,7 @@ describe('Customer invite e2e：创建客户自动生成邮箱绑定邀请链接
       });
       expect(login.statusCode).toBe(200);
       const loginBody = login.json() as { user: { role: string } };
-      expect(loginBody.user.role).toBe('customer');
+      expect(loginBody.user.role).toBe('customer_pm');
 
       const list = await app.inject({
         method: 'GET',
@@ -248,7 +248,7 @@ describe('Customer invite e2e：创建客户自动生成邮箱绑定邀请链接
         method: 'POST',
         url: `/api/projects/${projectId}/members`,
         headers: { authorization: `Bearer ${internalToken}` },
-        payload: { email: 'new-user@tenant-e.test', role: 'regular_user' },
+        payload: { email: 'new-user@tenant-e.test', role: 'customer_user' },
       });
       expect(invited.statusCode).toBe(201);
       const parsed = MemberInviteResponseSchema.safeParse(invited.json());
@@ -269,7 +269,7 @@ describe('Customer invite e2e：创建客户自动生成邮箱绑定邀请链接
         method: 'POST',
         url: `/api/projects/${projectId}/members`,
         headers: { authorization: `Bearer ${internalToken}` },
-        payload: { email: 'contact-e@tenant-e.test', role: 'key_user' },
+        payload: { email: 'contact-e@tenant-e.test', role: 'customer_key_user' },
       });
       expect(res.statusCode).toBe(201);
       const parsed = MemberInviteResponseSchema.safeParse(res.json());

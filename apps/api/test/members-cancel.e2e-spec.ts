@@ -16,7 +16,7 @@ import { connectOwner, resetTestDb } from './setup-test-db';
  * 取消/重发邀请 e2e（issue #43 验收）：
  * - ① 重发 → 旧链接失效（设密 400）、新链接可激活（验收 2）
  * - ② 取消 → 账号删除（users 无记录，租户/成员级联清除）、旧链接失效（验收 3）
- * - ③ 客户 PM 取消 project_manager 角色邀请 → 403；内部可取消（验收 4）
+ * - ③ 客户 PM 可取消同档邀请（验收 4：成员管理权归平台角色 customer_pm）
  */
 describe('Members e2e：重发 / 取消邀请', () => {
   let app: NestFastifyApplication;
@@ -46,7 +46,7 @@ describe('Members e2e：重发 / 取消邀请', () => {
     return (res.json() as { accessToken: string }).accessToken;
   }
 
-  async function invite(email: string, role = 'regular_user'): Promise<string> {
+  async function invite(email: string, role = 'customer_user'): Promise<string> {
     const res = await app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/members`,
@@ -98,9 +98,10 @@ describe('Members e2e：重发 / 取消邀请', () => {
       expect(create.statusCode).toBe(201);
       projectId = (create.json() as { project: { id: string } }).project.id;
 
-      // 客户 PM：内部邀请 + 激活
-      const pmInvite = await invite('pm@corp.test', 'project_manager');
+      // 客户 PM：内部邀请（key user 档）→ 激活 → 升级 customer_pm（登录时角色签进 JWT）
+      const pmInvite = await invite('pm@corp.test', 'customer_key_user');
       expect(await tryActivate(pmInvite)).toBe(200);
+      await owner`update users set role = 'customer_pm' where email = 'pm@corp.test'`;
       pmToken = await login('pm@corp.test');
     } finally {
       await owner.end();
@@ -117,7 +118,7 @@ describe('Members e2e：重发 / 取消邀请', () => {
       method: 'POST',
       url: `/api/projects/${projectId}/members`,
       headers: { authorization: `Bearer ${internalToken}` },
-      payload: { email: 'resend-activate@corp.test', role: 'regular_user' },
+      payload: { email: 'resend-activate@corp.test', role: 'customer_user' },
     });
     expect(resend.statusCode).toBe(201);
     const newUrl = MemberInviteResponseSchema.parse(resend.json()).inviteUrl!;
@@ -176,41 +177,32 @@ describe('Members e2e：重发 / 取消邀请', () => {
     expect(body.pendingInvites.find((p) => p.email === 'cancel-me@corp.test')).toBeUndefined();
   });
 
-  it('③ 客户 PM 取消 project_manager 角色邀请 → 403；内部可取消 → 204', async () => {
-    const inviteUrl = await invite('pm-invite@corp.test', 'project_manager');
+  it('③ 客户 PM 可取消同档邀请（customer_key_user）→ 204，链接失效', async () => {
+    const inviteUrl = await invite('ku-invite@corp.test', 'customer_key_user');
     const list = await app.inject({
       method: 'GET',
       url: `/api/projects/${projectId}/members`,
       headers: { authorization: `Bearer ${internalToken}` },
     });
     const pending = MembersListResponseSchema.parse(list.json()).pendingInvites.find(
-      (p) => p.email === 'pm-invite@corp.test',
+      (p) => p.email === 'ku-invite@corp.test',
     )!;
 
-    // 客户 PM 取消被拒（403），邀请保留
-    expect(await cancel(pmToken, pending.userId)).toBe(403);
-    // 客户 PM 重发也被拒（403）——用 regular_user 冒充 body.role 也应被按成员行角色拦截
-    const resendByPm = await app.inject({
-      method: 'POST',
-      url: `/api/projects/${projectId}/members`,
-      headers: { authorization: `Bearer ${pmToken}` },
-      payload: { email: 'pm-invite@corp.test', role: 'regular_user' },
-    });
-    expect(resendByPm.statusCode).toBe(403);
-    const still = await app.inject({
+    // 客户 PM（成员管理权 = 平台角色 customer_pm）直接取消 → 204，链接失效
+    expect(await cancel(pmToken, pending.userId)).toBe(204);
+    expect(await tryActivate(inviteUrl)).toBe(400);
+
+    // 列表里待激活分组消失
+    const after = await app.inject({
       method: 'GET',
       url: `/api/projects/${projectId}/members`,
       headers: { authorization: `Bearer ${internalToken}` },
     });
     expect(
-      MembersListResponseSchema.parse(still.json()).pendingInvites.some(
-        (p) => p.email === 'pm-invite@corp.test',
+      MembersListResponseSchema.parse(after.json()).pendingInvites.some(
+        (p) => p.email === 'ku-invite@corp.test',
       ),
-    ).toBe(true);
-
-    // 内部取消 → 204，链接失效
-    expect(await cancel(internalToken, pending.userId)).toBe(204);
-    expect(await tryActivate(inviteUrl)).toBe(400);
+    ).toBe(false);
   });
 
   it('④ 对已激活成员执行取消 → 409（不能取消，走停用）', async () => {

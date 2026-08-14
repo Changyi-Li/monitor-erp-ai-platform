@@ -1,4 +1,4 @@
-import {
+﻿import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
@@ -197,8 +197,8 @@ describe('Manual e2e：操作手册自动生成', () => {
 
     const owner = connectOwner();
     try {
-      await owner`update users set role = 'customer' where id = ${outsider.id}`;
-      await owner`update users set role = 'customer' where id = ${crossTenant.id}`;
+      await owner`update users set role = 'customer_user' where id = ${outsider.id}`;
+      await owner`update users set role = 'customer_user' where id = ${crossTenant.id}`;
       const [customerA] = await owner`insert into customers (name) values ('客户A') returning id`;
       const [customerB] = await owner`insert into customers (name) values ('客户B') returning id`;
       await owner`insert into user_tenants (user_id, customer_id) values (${outsider.id}, ${customerA.id})`;
@@ -212,7 +212,7 @@ describe('Manual e2e：操作手册自动生成', () => {
     }
     outsiderToken = await login('outsider@tenant-a.test');
     crossTenantToken = await login('cross@tenant-b.test');
-    keyUserToken = await inviteMember(projectAId, 'ku@tenant-a.test', 'key_user');
+    keyUserToken = await inviteMember(projectAId, 'ku@tenant-a.test', 'customer_key_user');
   });
 
   afterAll(async () => {

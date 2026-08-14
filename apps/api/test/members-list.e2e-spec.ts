@@ -48,7 +48,7 @@ describe('Members list e2e：真实成员 / 待激活邀请分组', () => {
     return (res.json() as { accessToken: string }).accessToken;
   }
 
-  async function invite(email: string, role = 'regular_user'): Promise<string> {
+  async function invite(email: string, role = 'customer_user'): Promise<string> {
     const res = await app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/members`,
@@ -101,9 +101,10 @@ describe('Members list e2e：真实成员 / 待激活邀请分组', () => {
       expect(create.statusCode).toBe(201);
       projectId = (create.json() as { project: { id: string } }).project.id;
 
-      // 客户 PM：内部邀请 + 激活后以其视角看列表
-      const pmInvite = await invite('pm@corp.test', 'project_manager');
+      // 客户 PM：内部邀请（key user 档）→ 激活 → 升级 customer_pm（登录时角色签进 JWT）
+      const pmInvite = await invite('pm@corp.test', 'customer_key_user');
       await activate(pmInvite);
+      await owner`update users set role = 'customer_pm' where email = 'pm@corp.test'`;
       pmToken = await login('pm@corp.test');
     } finally {
       await owner.end();
@@ -125,7 +126,7 @@ describe('Members list e2e：真实成员 / 待激活邀请分组', () => {
     const pending = body.pendingInvites[0]!;
     expect(pending.email).toBe('pending@corp.test');
     expect(pending.displayName).toBe('pending');
-    expect(pending.role).toBe('regular_user');
+    expect(pending.role).toBe('customer_user');
     expect(pending.userId).toBeTruthy();
     // 邀请时间 ≈ 现在，过期时间 ≈ +7 天（30s 容差）
     expect(Date.now() - Date.parse(pending.invitedAt)).toBeLessThan(30_000);
@@ -183,7 +184,7 @@ describe('Members list e2e：真实成员 / 待激活邀请分组', () => {
       method: 'POST',
       url: `/api/projects/${projectId}/members`,
       headers: { authorization: `Bearer ${internalToken}` },
-      payload: { email: 'resend@corp.test', role: 'regular_user' },
+      payload: { email: 'resend@corp.test', role: 'customer_user' },
     });
     expect(resend.statusCode).toBe(201);
     const newUrl = MemberInviteResponseSchema.parse(resend.json()).inviteUrl!;

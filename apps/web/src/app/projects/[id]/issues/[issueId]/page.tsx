@@ -75,8 +75,9 @@ export default function IssueDetailPage() {
 
   const viewerRole = detail?.viewerRole ?? null;
   const issue = detail?.issue;
-  const canComment = viewerRole !== null && viewerRole !== 'regular_user';
-  const canManage = viewerRole === 'internal' || viewerRole === 'project_manager';
+  // T2：issue:comment 排除 customer_user；issue:manage = internal + customer_pm（平台角色）
+  const canComment = viewerRole !== null && viewerRole !== 'customer_user';
+  const canManage = viewerRole === 'internal' || viewerRole === 'customer_pm';
   const canTransition = viewerRole === 'internal';
   const nextStatus = issue ? NEXT_STATUS[issue.status] : undefined;
 

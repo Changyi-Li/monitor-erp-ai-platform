@@ -286,7 +286,7 @@ describe('Portal e2e：客户门户端到端验收', () => {
     const owner = connectOwner();
     try {
       for (const id of [pmA.id, regularA.id, pmB.id]) {
-        await owner`update users set role = 'customer' where id = ${id}`;
+        await owner`update users set role = 'customer_user' where id = ${id}`;
       }
       const [customerA] = await owner`insert into customers (name) values ('客户A') returning id`;
       const [customerB] = await owner`insert into customers (name) values ('客户B') returning id`;
@@ -304,10 +304,10 @@ describe('Portal e2e：客户门户端到端验收', () => {
       await owner.end();
     }
 
-    // 真实成员链路：客户 A PM + regular、客户 B PM
-    await inviteMember(projectAId, 'pm-a@tenant-a.test', 'project_manager');
-    customerAToken = await inviteMember(projectAId, 'ru-a@tenant-a.test', 'regular_user');
-    await inviteMember(projectBId, 'pm-b@tenant-b.test', 'project_manager');
+    // 真实成员链路：客户 A key user + regular、客户 B key user
+    await inviteMember(projectAId, 'pm-a@tenant-a.test', 'customer_key_user');
+    customerAToken = await inviteMember(projectAId, 'ru-a@tenant-a.test', 'customer_user');
+    await inviteMember(projectBId, 'pm-b@tenant-b.test', 'customer_key_user');
 
     // 项目 A1 种数据（内部）
     blueprintAId = await seedBlueprint(projectAId);
@@ -354,7 +354,7 @@ describe('Portal e2e：客户门户端到端验收', () => {
   });
 
   describe('验收①：客户全流程一条龙（客户 A regular 视角）', () => {
-    it('登录 → /api/me → 项目列表（含 A1 不含 B1）→ 项目详情 viewerRole=regular_user', async () => {
+    it('登录 → /api/me → 项目列表（含 A1 不含 B1）→ 项目详情 viewerRole=customer_user', async () => {
       // 登录（register 已返回 token；再走一次 login 验证会话链路）
       const loginRes = await app.inject({
         method: 'POST',
@@ -390,7 +390,7 @@ describe('Portal e2e：客户门户端到端验收', () => {
       expect(detail.statusCode).toBe(200);
       const parsed = ProjectGetResponseSchema.parse(detail.json());
       expect(parsed.project.id).toBe(projectAId);
-      expect(parsed.viewerRole).toBe('regular_user');
+      expect(parsed.viewerRole).toBe('customer_user');
     });
 
     it('只读各域 200：蓝图（详情+版本历史+版本详情+原文件下载）→ 阶段（+模板）→ 风险 → 纪要（+附件下载）→ 问题', async () => {
@@ -438,7 +438,7 @@ describe('Portal e2e：客户门户端到端验收', () => {
       expect(stages.statusCode).toBe(200);
       const stagesParsed = StagesListResponseSchema.parse(stages.json());
       expect(stagesParsed.stages.map((s) => s.id)).toContain(stageAId);
-      expect(stagesParsed.viewerRole).toBe('regular_user');
+      expect(stagesParsed.viewerRole).toBe('customer_user');
 
       const templates = await app.inject({
         method: 'GET',
@@ -532,7 +532,7 @@ describe('Portal e2e：客户门户端到端验收', () => {
       const parsed = IssueGetResponseSchema.parse(detail.json());
       expect(parsed.issue.title).toBe('客户提交的问题');
       expect(parsed.issue.reporterName).toBe('ru-a'); // reporterId 由服务层取当前用户
-      expect(parsed.viewerRole).toBe('regular_user');
+      expect(parsed.viewerRole).toBe('customer_user');
 
       // 审计落库：actor 为客户用户本人（role=customer），资源 = 该问题
       const owner = connectOwner();
@@ -542,7 +542,7 @@ describe('Portal e2e：客户门户端到端验收', () => {
           where action = 'issue.create' and resource_id = ${issueId}`;
         expect(rows).toHaveLength(1);
         expect(rows[0].actor_user_id).toBe(regularAId);
-        expect(rows[0].actor_role).toBe('customer');
+        expect(rows[0].actor_role).toBe('customer_user');
       } finally {
         await owner.end();
       }

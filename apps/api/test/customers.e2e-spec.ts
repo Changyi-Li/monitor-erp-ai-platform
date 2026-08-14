@@ -1,4 +1,4 @@
-import {
+﻿import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
@@ -117,7 +117,7 @@ describe('Customers e2e：客户资料编辑、搜索与只读边界', () => {
     const owner = connectOwner();
     try {
       await owner`update users set role = 'super_admin' where id = ${admin.id}`;
-      await owner`update users set role = 'customer' where id in (${customerAUser.id}, ${customerBUser.id})`;
+      await owner`update users set role = 'customer_user' where id in (${customerAUser.id}, ${customerBUser.id})`;
     } finally {
       await owner.end();
     }

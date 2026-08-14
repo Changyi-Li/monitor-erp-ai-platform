@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { can, PERMISSION_MATRIX, PERMISSIONS } from '@monitor/shared';
+import { can, PERMISSION_MATRIX, PERMISSIONS, type UserRole } from '@monitor/shared';
+
+const ALL_ROLES: UserRole[] = ['super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user'];
+const CUSTOMER_ROLES: UserRole[] = ['customer_pm', 'customer_key_user', 'customer_user'];
 
 /**
- * 权限矩阵 sanity（spec §2.4）：shared 常量与矩阵的守护测试。
+ * 权限矩阵 sanity（spec §2.4 + T1 平台角色拆分）：shared 常量与矩阵的守护测试。
  * 矩阵是唯一事实源；后续功能模块落端点时直接复用 can()。
+ * T2：权限判定完全基于平台角色（project_members.role 已退役）。
  */
 describe('权限矩阵', () => {
   it('每项权限至少映射一个角色', () => {
@@ -26,98 +30,101 @@ describe('权限矩阵', () => {
     }
   });
 
-  it('spec §2.4 客户侧差异：评论（PM/KeyUser，普通用户不可）', () => {
-    expect(can('regular_user', 'issue:comment')).toBe(false);
-    expect(can('key_user', 'issue:comment')).toBe(true);
-    expect(can('project_manager', 'issue:comment')).toBe(true);
+  it('客户侧差异：评论（PM/KeyUser 可，普通用户不可）', () => {
+    expect(can('customer_user', 'issue:comment')).toBe(false);
+    expect(can('customer_key_user', 'issue:comment')).toBe(true);
+    expect(can('customer_pm', 'issue:comment')).toBe(true);
     expect(can('internal', 'issue:comment')).toBe(true);
   });
 
-  it('spec §2.4：问题管理（仅 PM+），Key User 不可', () => {
-    expect(can('key_user', 'issue:manage')).toBe(false);
-    expect(can('regular_user', 'issue:manage')).toBe(false);
-    expect(can('project_manager', 'issue:manage')).toBe(true);
+  it('问题管理（仅 PM+），Key User 不可', () => {
+    expect(can('customer_key_user', 'issue:manage')).toBe(false);
+    expect(can('customer_user', 'issue:manage')).toBe(false);
+    expect(can('customer_pm', 'issue:manage')).toBe(true);
   });
 
-  it('spec §2.4：提交问题全员可', () => {
-    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
-      expect(can(role as never, 'issue:create')).toBe(true);
+  it('提交问题全员可', () => {
+    for (const role of ALL_ROLES) {
+      expect(can(role, 'issue:create')).toBe(true);
     }
   });
 
-  it('#16：蓝图查看全员（§2.4 line 77），维护=仅内部（§2.4 line 81 蓝图维护）', () => {
-    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
-      expect(can(role as never, 'blueprint:view')).toBe(true);
+  it('#16：蓝图查看全员，维护=仅内部', () => {
+    for (const role of ALL_ROLES) {
+      expect(can(role, 'blueprint:view')).toBe(true);
     }
     expect(can('super_admin', 'blueprint:manage')).toBe(true);
     expect(can('internal', 'blueprint:manage')).toBe(true);
-    expect(can('project_manager', 'blueprint:manage')).toBe(false);
-    expect(can('key_user', 'blueprint:manage')).toBe(false);
-    expect(can('regular_user', 'blueprint:manage')).toBe(false);
+    for (const role of CUSTOMER_ROLES) {
+      expect(can(role, 'blueprint:manage')).toBe(false);
+    }
   });
 
-  it('#17：阶段查看全员（§2.4 line 77），阶段/风险管理=仅内部（§2.4 line 81）', () => {
-    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
-      expect(can(role as never, 'phase:view')).toBe(true);
+  it('#17：阶段查看全员，阶段/风险管理=仅内部', () => {
+    for (const role of ALL_ROLES) {
+      expect(can(role, 'phase:view')).toBe(true);
     }
     for (const permission of ['phase:manage', 'risk:manage'] as const) {
       expect(can('super_admin', permission)).toBe(true);
       expect(can('internal', permission)).toBe(true);
-      expect(can('project_manager', permission)).toBe(false);
-      expect(can('key_user', permission)).toBe(false);
-      expect(can('regular_user', permission)).toBe(false);
+      for (const role of CUSTOMER_ROLES) {
+        expect(can(role, permission)).toBe(false);
+      }
     }
   });
 
-  it('#18：会议纪要查看全员（§2.4 查看蓝图/实施阶段/会议纪要），维护=仅内部（§2.4 维护行）', () => {
-    for (const role of ['super_admin', 'internal', 'project_manager', 'key_user', 'regular_user']) {
-      expect(can(role as never, 'meeting:view')).toBe(true);
+  it('#18：会议纪要查看全员，维护=仅内部', () => {
+    for (const role of ALL_ROLES) {
+      expect(can(role, 'meeting:view')).toBe(true);
     }
     expect(can('super_admin', 'meeting:manage')).toBe(true);
     expect(can('internal', 'meeting:manage')).toBe(true);
-    expect(can('project_manager', 'meeting:manage')).toBe(false);
-    expect(can('key_user', 'meeting:manage')).toBe(false);
-    expect(can('regular_user', 'meeting:manage')).toBe(false);
-  });
-
-  it('#19：知识库文档编辑=仅内部（§2.4 line 79「知识库文档编辑/操作手册生成 ✅」）；查看默认开放无 kb:view', () => {
-    for (const role of ['super_admin', 'internal']) {
-      expect(can(role as never, 'kb:edit')).toBe(true);
+    for (const role of CUSTOMER_ROLES) {
+      expect(can(role, 'meeting:manage')).toBe(false);
     }
-    expect(can('project_manager', 'kb:edit')).toBe(false);
-    expect(can('key_user', 'kb:edit')).toBe(false);
-    expect(can('regular_user', 'kb:edit')).toBe(false);
   });
 
-  it('#21：RAG 同步状态/调试台=仅内部（spec 用户故事 50「内部用户查看文档的 RAG 同步状态」）', () => {
-    for (const role of ['super_admin', 'internal']) {
-      expect(can(role as never, 'rag:view')).toBe(true);
+  it('#19：知识库文档编辑=仅内部；查看默认开放无 kb:view', () => {
+    for (const role of ['super_admin', 'internal'] as UserRole[]) {
+      expect(can(role, 'kb:edit')).toBe(true);
     }
-    expect(can('project_manager', 'rag:view')).toBe(false);
-    expect(can('key_user', 'rag:view')).toBe(false);
-    expect(can('regular_user', 'rag:view')).toBe(false);
+    for (const role of CUSTOMER_ROLES) {
+      expect(can(role, 'kb:edit')).toBe(false);
+    }
   });
 
-  it('#15：状态流转=内部专属（spec 37 内部处理问题；客户侧无流转）', () => {
+  it('#21：RAG 同步状态/调试台=仅内部', () => {
+    for (const role of ['super_admin', 'internal'] as UserRole[]) {
+      expect(can(role, 'rag:view')).toBe(true);
+    }
+    for (const role of CUSTOMER_ROLES) {
+      expect(can(role, 'rag:view')).toBe(false);
+    }
+  });
+
+  it('#15：状态流转=内部专属（客户侧无流转）', () => {
     expect(can('super_admin', 'issue:transition')).toBe(true);
     expect(can('internal', 'issue:transition')).toBe(true);
-    expect(can('project_manager', 'issue:transition')).toBe(false);
-    expect(can('key_user', 'issue:transition')).toBe(false);
-    expect(can('regular_user', 'issue:transition')).toBe(false);
+    for (const role of CUSTOMER_ROLES) {
+      expect(can(role, 'issue:transition')).toBe(false);
+    }
   });
 
   it('本期强制项：建项目=内部+；建客户=仅超管；编辑客户=内部+；成员管理=PM+', () => {
     expect(can('internal', 'project:create')).toBe(true);
-    expect(can('project_manager', 'project:create')).toBe(false);
+    expect(can('customer_pm', 'project:create')).toBe(false);
     expect(can('super_admin', 'customer:create')).toBe(true);
     expect(can('internal', 'customer:create')).toBe(false);
     // #14：编辑客户资料 = 内部+（客户侧无任何客户写权限）
     expect(can('super_admin', 'customer:update')).toBe(true);
     expect(can('internal', 'customer:update')).toBe(true);
-    expect(can('project_manager', 'customer:update')).toBe(false);
-    expect(can('regular_user', 'customer:update')).toBe(false);
-    expect(can('project_manager', 'member:manage')).toBe(true);
-    expect(can('key_user', 'member:manage')).toBe(false);
+    for (const role of CUSTOMER_ROLES) {
+      expect(can(role, 'customer:update')).toBe(false);
+    }
+    // T2：成员管理权 = 平台角色 customer_pm（内部+；Key User/普通用户无）
+    expect(can('customer_pm', 'member:manage')).toBe(true);
+    expect(can('customer_key_user', 'member:manage')).toBe(false);
+    expect(can('customer_user', 'member:manage')).toBe(false);
   });
 
   it('null/undefined 角色无权限（fail closed）', () => {

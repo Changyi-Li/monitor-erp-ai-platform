@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
-import { can, type FunctionalRole } from '@monitor/shared';
+import { can } from '@monitor/shared';
 import type {
   AiConfigResponse,
   AiImageParsingRequest,
@@ -35,7 +35,7 @@ export class AiService {
 
   /** 内部 AI 权限 = 复用 agent:use（AI 功能域，不新增权限点——矩阵定稿契约最小改动） */
   assertAiUse(actor: AuthUser): void {
-    if (!can(actor.role as FunctionalRole, 'agent:use')) {
+    if (!can(actor.role, 'agent:use')) {
       throw new ForbiddenException('仅内部用户可使用 AI 能力');
     }
   }

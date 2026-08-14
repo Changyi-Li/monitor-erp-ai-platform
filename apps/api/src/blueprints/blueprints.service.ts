@@ -20,7 +20,7 @@ import {
   type BlueprintVersionsListResponse,
   type ProjectViewerRole,
 } from '@monitor/contracts';
-import { can, type FunctionalRole } from '@monitor/shared';
+import { can } from '@monitor/shared';
 import { STORAGE } from '../adapters/storage/storage.module';
 import type { StoragePort } from '../adapters/storage/storage.port';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
@@ -73,7 +73,7 @@ export class BlueprintsService {
     if (ctx.isInternal) {
       return 'internal';
     }
-    const role = await this.members.resolveProjectRole(projectId, ctx.userId);
+    const role = await this.members.resolveViewerRole(projectId, ctx.userId);
     if (!role) {
       throw new ForbiddenException('你不是该项目成员');
     }
@@ -112,7 +112,7 @@ export class BlueprintsService {
     permission: 'blueprint:view' | 'blueprint:manage',
     message: string,
   ): void {
-    if (!can(viewerRole as FunctionalRole, permission)) {
+    if (!can(viewerRole, permission)) {
       throw new ForbiddenException(message);
     }
   }

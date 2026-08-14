@@ -13,16 +13,14 @@ import {
   type PendingInvite,
   type ProjectGetResponse,
 } from '@monitor/contracts';
-import { PROJECT_ROLE_LABELS } from '../../../lib/roles';
+import { INVITE_ROLES, inviteRoleLabel, userRoleLabel } from '../../../lib/roles';
 import { apiFetch, errorMessage } from '../../../lib/api';
-
-const MANAGER_ROLES = ['key_user', 'regular_user'] as const;
 
 /**
  * 项目详情（含成员管理）：
- * - viewerRole 决定管理入口显隐（内部/PM 可见邀请与停用）
+ * - viewerRole 决定管理入口显隐（内部/客户项目经理可见邀请与停用，T2 平台角色判定）
  * - 客户用户跨项目访问 → 后端 403（本页展示错误）；跨租户 → 404
- * - PM 邀请表单角色只给 key_user/regular_user（不可升级角色由后端强制）
+ * - 邀请档位 = customer_key_user/customer_user（customer_pm 只能由建客户/超管产生）
  */
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,10 +30,10 @@ export default function ProjectDetailPage() {
   const [inviteError, setInviteError] = useState('');
   const [inviteResult, setInviteResult] = useState<MemberInviteResponse | null>(null);
   const [inviting, setInviting] = useState(false);
-  const [form, setForm] = useState({ email: '', displayName: '', role: 'regular_user' });
+  const [form, setForm] = useState({ email: '', displayName: '', role: 'customer_user' });
 
   const viewerRole = detail?.viewerRole ?? null;
-  const canManage = viewerRole === 'internal' || viewerRole === 'project_manager';
+  const canManage = viewerRole === 'internal' || viewerRole === 'customer_pm';
 
   useEffect(() => {
     if (!id) {
@@ -44,7 +42,7 @@ export default function ProjectDetailPage() {
     apiFetch(`/api/projects/${id}`, { schema: ProjectGetResponseSchema })
       .then((d) => {
         setDetail(d);
-        if (d.viewerRole === 'internal' || d.viewerRole === 'project_manager') {
+        if (d.viewerRole === 'internal' || d.viewerRole === 'customer_pm') {
           return apiFetch(`/api/projects/${id}/members`, {
             schema: MembersListResponseSchema,
           }).then(setMembers);
@@ -74,7 +72,7 @@ export default function ProjectDetailPage() {
         schema: MemberInviteResponseSchema,
       });
       setInviteResult(res);
-      setForm({ email: '', displayName: '', role: 'regular_user' });
+      setForm({ email: '', displayName: '', role: 'customer_user' });
       await refreshMembers();
     } catch (err) {
       setInviteError(errorMessage(err));
@@ -83,14 +81,15 @@ export default function ProjectDetailPage() {
     }
   }
 
-  /** 重发邀请（issue #43）：生成新链接（旧链接立即失效），展示供复制分发 */
+  /** 重发邀请（issue #43）：生成新链接（旧链接立即失效），展示供复制分发。
+   * 重发不改变账号角色（T2），role 省略由后端契约 default 兜底 */
   async function handleResend(p: PendingInvite) {
     setInviteError('');
     setInviteResult(null);
     try {
       const res = await apiFetch(`/api/projects/${id}/members`, {
         method: 'POST',
-        body: { email: p.email, role: p.role },
+        body: { email: p.email },
         schema: MemberInviteResponseSchema,
       });
       setInviteResult(res);
@@ -204,9 +203,9 @@ export default function ProjectDetailPage() {
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
             >
-              {MANAGER_ROLES.map((r) => (
+              {INVITE_ROLES.map((r) => (
                 <option key={r} value={r}>
-                  {PROJECT_ROLE_LABELS[r]}
+                  {inviteRoleLabel(r)}
                 </option>
               ))}
             </select>
@@ -250,33 +249,22 @@ export default function ProjectDetailPage() {
               </thead>
               <tbody>
                 {members.pendingInvites.map((p) => {
-                  // 客户 PM 不能操作 project_manager 角色的邀请（后端 403 兜底）
-                  const locked = viewerRole === 'project_manager' && p.role === 'project_manager';
+                  // T2：邀请档位仅 customer_key_user/customer_user，客户 PM 可操作任何待激活邀请
                   const expired = Date.parse(p.expiresAt) < Date.now();
                   return (
                     <tr key={p.userId}>
                       <td>{p.displayName}</td>
                       <td>{p.email}</td>
-                      <td>{PROJECT_ROLE_LABELS[p.role]}</td>
+                      <td>{userRoleLabel(p.role)}</td>
                       <td style={expired ? { color: '#b91c1c' } : undefined}>
                         {new Date(p.expiresAt).toLocaleString()}
                         {expired ? '（已过期）' : ''}
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          disabled={locked}
-                          title={locked ? '项目经理角色的邀请只能由内部用户操作' : undefined}
-                          onClick={() => handleResend(p)}
-                        >
+                        <button type="button" onClick={() => handleResend(p)}>
                           重发
                         </button>{' '}
-                        <button
-                          type="button"
-                          disabled={locked}
-                          title={locked ? '项目经理角色的邀请只能由内部用户操作' : undefined}
-                          onClick={() => handleCancelInvite(p)}
-                        >
+                        <button type="button" onClick={() => handleCancelInvite(p)}>
                           取消
                         </button>
                       </td>
@@ -310,10 +298,10 @@ export default function ProjectDetailPage() {
                   <tr key={m.id}>
                     <td>{m.displayName}</td>
                     <td>{m.email}</td>
-                    <td>{PROJECT_ROLE_LABELS[m.role]}</td>
+                    <td>{userRoleLabel(m.role)}</td>
                     <td>{m.isActive ? '正常' : '已停用'}</td>
                     <td>
-                      {m.role !== 'project_manager' && (
+                      {m.role !== 'customer_pm' && (
                         <button
                           type="button"
                           onClick={() => handleToggle(m.userId, m.isActive)}

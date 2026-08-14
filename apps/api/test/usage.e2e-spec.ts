@@ -1,4 +1,4 @@
-import {
+﻿import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
@@ -125,7 +125,7 @@ describe('Usage e2e：AI Token 用量计量', () => {
 
     const owner = connectOwner();
     try {
-      await owner`update users set role = 'customer' where id = ${customer.id}`;
+      await owner`update users set role = 'customer_user' where id = ${customer.id}`;
       const [c] = await owner`insert into customers (name) values ('客户A') returning id`;
       await owner`insert into user_tenants (user_id, customer_id) values (${customer.id}, ${c.id})`;
     } finally {

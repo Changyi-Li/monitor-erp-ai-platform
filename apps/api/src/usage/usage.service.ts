@@ -1,6 +1,6 @@
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { and, count, eq, gte, lte, sql } from 'drizzle-orm';
-import { can, type FunctionalRole } from '@monitor/shared';
+import { can } from '@monitor/shared';
 import type {
   UsageSummaryQuery,
   UsageSummaryResponse,
@@ -27,7 +27,7 @@ export class UsageService {
 
   /** 用量查看权限 = agent:use（AI 功能域，不新增权限点——矩阵定稿契约最小改动） */
   assertUsageView(actor: AuthUser): void {
-    if (!can(actor.role as FunctionalRole, 'agent:use')) {
+    if (!can(actor.role, 'agent:use')) {
       throw new ForbiddenException('仅内部用户可查看 AI 用量');
     }
   }

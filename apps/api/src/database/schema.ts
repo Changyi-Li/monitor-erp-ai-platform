@@ -32,7 +32,9 @@ export const users = pgTable(
     displayName: text('display_name').notNull().default(''),
     // 用户描述（#37：原版「描述」字段，maxlength 35，可空）
     description: text('description'),
-    // 'super_admin' | 'internal' | 'customer'（RBAC issue #13；客户细粒度角色存 project_members）
+    // 平台角色（RBAC issue #13 + 角色拆分：#T1）：super_admin | internal | customer_pm |
+    // customer_key_user | customer_user（枚举 = text + check，同 project_members.role 先例）。
+    // 权限判定全走平台角色；客户角色三档对齐 spec §2.1 客户侧角色。
     role: text('role').notNull().default('internal'),
     isActive: boolean('is_active').notNull().default(true),
     // 邀请设密（RBAC issue #13）：invite_token_hash 非空 = 账号待激活（isActive=false）
@@ -51,6 +53,10 @@ export const users = pgTable(
     uniqueIndex('users_display_name_unique')
       .on(t.displayName)
       .where(sql`${t.displayName} <> ''`),
+    check(
+      'users_role_check',
+      sql`${t.role} in ('super_admin','internal','customer_pm','customer_key_user','customer_user')`,
+    ),
   ],
 );
 
@@ -183,14 +189,12 @@ export const projectMembers = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    role: text('role').notNull(),
     isActive: boolean('is_active').notNull().default(true),
     invitedBy: uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check('project_members_role_check', sql`${t.role} in ('project_manager','key_user','regular_user')`),
     unique('project_members_project_user_unique').on(t.projectId, t.userId),
     index('project_members_user_idx').on(t.userId),
     index('project_members_project_idx').on(t.projectId),

@@ -1,4 +1,4 @@
-import {
+﻿import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
@@ -244,7 +244,7 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
     const owner = connectOwner();
     try {
       await owner`update users set role = 'super_admin' where id = ${admin.id}`;
-      await owner`update users set role = 'customer' where id = ${outsider.id}`;
+      await owner`update users set role = 'customer_user' where id = ${outsider.id}`;
       const [customerA] = await owner`insert into customers (name) values ('客户A') returning id`;
       await owner`insert into user_tenants (user_id, customer_id) values (${outsider.id}, ${customerA.id})`;
       cidA = customerA.id as string;
@@ -263,11 +263,22 @@ describe('Issues e2e：问题清单权限矩阵、状态机与指派', () => {
     });
     expect(create.statusCode).toBe(201);
     projectAId = (create.json() as { project: { id: string } }).project.id;
-    pmToken = await inviteMember(projectAId, { email: 'pm@tenant-a.test', role: 'project_manager' });
-    keyUserToken = await inviteMember(projectAId, { email: 'ku@tenant-a.test', role: 'key_user' });
+    // PM 先按 key user 邀请，再升级为 customer_pm（JWT 登录时签发，须升级后重新登录）
+    pmToken = await inviteMember(projectAId, {
+      email: 'pm@tenant-a.test',
+      role: 'customer_key_user',
+    });
+    const ownerUp = connectOwner();
+    try {
+      await ownerUp`update users set role = 'customer_pm' where email = 'pm@tenant-a.test'`;
+    } finally {
+      await ownerUp.end();
+    }
+    pmToken = await login('pm@tenant-a.test');
+    keyUserToken = await inviteMember(projectAId, { email: 'ku@tenant-a.test', role: 'customer_key_user' });
     const regularUser = await inviteMember(projectAId, {
       email: 'ru@tenant-a.test',
-      role: 'regular_user',
+      role: 'customer_user',
     });
     regularUserToken = regularUser;
     const owner2 = connectOwner();

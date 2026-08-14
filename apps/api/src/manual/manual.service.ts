@@ -19,7 +19,7 @@ import {
   type ManualGenerationsListResponse,
   type ProjectViewerRole,
 } from '@monitor/contracts';
-import { can, type FunctionalRole } from '@monitor/shared';
+import { can } from '@monitor/shared';
 import { LLM } from '../adapters/llm/llm.module';
 import type { LLMClient } from '../adapters/llm/llm-client.port';
 import { STORAGE } from '../adapters/storage/storage.module';
@@ -80,7 +80,7 @@ export class ManualService {
     if (ctx.isInternal) {
       return 'internal';
     }
-    const role = await this.members.resolveProjectRole(projectId, ctx.userId);
+    const role = await this.members.resolveViewerRole(projectId, ctx.userId);
     if (!role) {
       throw new ForbiddenException('你不是该项目成员');
     }
@@ -134,7 +134,7 @@ export class ManualService {
 
   /** 角色级权限检查：维护 = manual:generate（仅内部/超管） */
   private assertGenerate(viewerRole: ProjectViewerRole, message: string): void {
-    if (!can(viewerRole as FunctionalRole, 'manual:generate')) {
+    if (!can(viewerRole, 'manual:generate')) {
       throw new ForbiddenException(message);
     }
   }

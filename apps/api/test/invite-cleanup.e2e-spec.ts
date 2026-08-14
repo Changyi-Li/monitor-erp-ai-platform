@@ -41,7 +41,7 @@ describe('InviteCleanup e2e：过期邀请自动清理', () => {
       method: 'POST',
       url: `/api/projects/${projectId}/members`,
       headers: { authorization: `Bearer ${internalToken}` },
-      payload: { email, role: 'regular_user' },
+      payload: { email, role: 'customer_user' },
     });
     expect(res.statusCode).toBe(201);
     return MemberInviteResponseSchema.parse(res.json()).inviteUrl!;
