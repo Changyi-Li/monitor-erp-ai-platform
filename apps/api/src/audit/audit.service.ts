@@ -12,6 +12,7 @@ export const AUDIT_ACTIONS = {
   USER_CREATE: 'user.create',
   USER_UPDATE: 'user.update',
   USER_RESET_PASSWORD: 'user.reset_password',
+  USER_STATUS_CHANGE: 'user.status_change', // T5 账号停用/启用
   USER_INVITE_EXPIRED: 'user.invite_expired',
   CUSTOMER_CREATE: 'customer.create',
   CUSTOMER_UPDATE: 'customer.update',

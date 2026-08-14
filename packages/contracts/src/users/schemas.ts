@@ -71,3 +71,19 @@ export const UpdateUserResponseSchema = z.object({
   user: UserAdminSchema,
 });
 export type UpdateUserResponse = z.output<typeof UpdateUserResponseSchema>;
+
+/**
+ * 账号停用/启用（T5，spec-v1 US5）：独立端点 PATCH /users/:id/status——
+ * isActive 的权限语义与资料更新不同（超管任意账号 + customer_pm 本公司账号），
+ * 不并入 UpdateUserRequest 以免混淆「任何登录角色可进」的 PATCH 入口。
+ * 服务端防护：不能停用自己（409）；customer_pm 目标不在本公司 → 404（不可见语义）。
+ */
+export const UpdateUserStatusRequestSchema = z.object({
+  isActive: z.boolean(),
+});
+export type UpdateUserStatusRequest = z.output<typeof UpdateUserStatusRequestSchema>;
+
+export const UpdateUserStatusResponseSchema = z.object({
+  user: UserAdminSchema,
+});
+export type UpdateUserStatusResponse = z.output<typeof UpdateUserStatusResponseSchema>;

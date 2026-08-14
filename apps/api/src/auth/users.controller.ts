@@ -8,6 +8,8 @@ import {
   ResetUserPasswordResponseSchema,
   UpdateUserRequestSchema,
   UpdateUserResponseSchema,
+  UpdateUserStatusRequestSchema,
+  UpdateUserStatusResponseSchema,
   UsersListResponseSchema,
   type CreateUserRequest,
   type CreateUserResponse,
@@ -16,6 +18,8 @@ import {
   type ResetUserPasswordResponse,
   type UpdateUserRequest,
   type UpdateUserResponse,
+  type UpdateUserStatusRequest,
+  type UpdateUserStatusResponse,
   type UsersListResponse,
 } from '@monitor/contracts';
 import { CurrentUser, type AuthUser } from '../common/current-user.decorator';
@@ -73,6 +77,22 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ): Promise<UpdateUserResponse> {
     return this.auth.updateUser(id, body, actor);
+  }
+
+  /**
+   * 账号停用/启用（T5，spec-v1 US5）：方法级 @Roles 覆盖类级——
+   * 超管任何账号；customer_pm 本公司账号（service 层租户校验，跨公司 404）；
+   * internal/customer_key_user/customer_user 拒绝。服务层防自己（409）。
+   */
+  @Patch(':id/status')
+  @Roles('super_admin', 'customer_pm')
+  @ZodResponse(UpdateUserStatusResponseSchema)
+  updateUserStatus(
+    @Param('id', uuidParam) id: string,
+    @Body(new ZodValidationPipe(UpdateUserStatusRequestSchema)) body: UpdateUserStatusRequest,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<UpdateUserStatusResponse> {
+    return this.auth.updateUserStatus(id, body, actor);
   }
 
   /**

@@ -26,6 +26,8 @@ import {
   type SetPasswordResponse,
   type UpdateUserRequest,
   type UpdateUserResponse,
+  type UpdateUserStatusRequest,
+  type UpdateUserStatusResponse,
   type User,
   type UserAdmin,
   type UsersListResponse,
@@ -452,6 +454,87 @@ export class AuthService {
         inviteKind: updated.inviteKind as 'customer' | null,
       },
     };
+  }
+
+  /**
+   * 账号停用/启用（T5，spec-v1 US5：客户 PM 停用本公司普通用户）：
+   * - 超管：任何账号（自己除外——防最后一名超管锁死平台 409）
+   * - customer_pm：仅本公司账号（join user_tenants 租户校验；不可见即 404，
+   *   与 listUsers 过滤语义一致）；不能动本公司其他 PM（403，quiz 固化）；
+   *   自己同样 409
+   * - 待激活账号（邀请 token 未消耗）禁止启用（400，防死锁邀请流程）
+   * - internal/customer_key_user/customer_user 由 controller @Roles 拒绝
+   * 停用语义：登录/刷新立即 401（login/refresh 已查 isActive）；已签发 access token
+   * 最长残留 JWT_ACCESS_TTL（15m），下次轮换刷新即被踢。
+   */
+  async updateUserStatus(
+    userId: string,
+    input: UpdateUserStatusRequest,
+    actor: AuthUser,
+  ): Promise<UpdateUserStatusResponse> {
+    const [existing] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!existing) {
+      throw new NotFoundException('用户不存在');
+    }
+    if (actor.sub === userId) {
+      throw new ConflictException('不能停用或启用自己的账号');
+    }
+
+    if (actor.role !== 'super_admin') {
+      // customer_pm：目标必须是本公司账号（user_tenants 租户过滤）
+      const ctx = this.tenantContext.current;
+      if (!ctx?.tenantId) {
+        throw new InternalServerErrorException('缺少租户上下文');
+      }
+      const [tenancy] = await this.db
+        .select({ userId: userTenants.userId })
+        .from(userTenants)
+        .where(
+          and(eq(userTenants.userId, userId), eq(userTenants.customerId, ctx.tenantId)),
+        )
+        .limit(1);
+      if (!tenancy) {
+        throw new NotFoundException('用户不存在');
+      }
+      // 客户 PM 不能停用/启用本公司其他 PM（quiz 固化：PM 只管理 Key User/普通用户，
+      // 防客户成员管理被锁死）；超管不受限
+      if (existing.role === 'customer_pm') {
+        throw new ForbiddenException('不能停用或启用客户项目经理');
+      }
+    }
+
+    // 待激活账号（邀请 token 未消耗）没有「启用」一说——置 true 会死锁邀请流程
+    // （邀请链接拒绝已激活 + 重发 409 + 无密码无法登录）；停用待激活账号是幂等 200
+    if (input.isActive && existing.inviteTokenHash !== null) {
+      throw new BadRequestException('该账号尚未激活，请通过邀请链接激活账号');
+    }
+
+    if (existing.isActive === input.isActive) {
+      // 幂等：状态未变化直接返回（已授权，不落审计噪音）
+      return { user: toListItem(existing) };
+    }
+
+    const [updated] = await this.db
+      .update(users)
+      .set({ isActive: input.isActive, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updated) {
+      throw new InternalServerErrorException('更新用户失败');
+    }
+
+    await this.audit.record(AUDIT_ACTIONS.USER_STATUS_CHANGE, {
+      actorUserId: actor.sub,
+      actorRole: actor.role,
+      resourceType: 'user',
+      resourceId: userId,
+      metadata: { email: existing.email, isActive: input.isActive },
+    });
+    return { user: toListItem(updated) };
   }
 
   /**

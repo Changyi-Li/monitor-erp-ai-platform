@@ -7,6 +7,7 @@ import {
   ResendInviteResponseSchema,
   ResetUserPasswordResponseSchema,
   UpdateUserResponseSchema,
+  UpdateUserStatusResponseSchema,
   UsersListResponseSchema,
   type CreateUserResponse,
   type CustomerCreateResponse,
@@ -22,7 +23,8 @@ import { CUSTOMER_ROLES, INTERNAL_ROLES, type UserRole } from '@monitor/shared';
 
 /**
  * 用户管理（T4 对公司开放：内部/超管看全部平台账号；客户 PM 看本公司账号——
- * 后端按租户过滤，前端各操作区以 isSuperAdmin 守卫保持超管专属）。
+ * 后端按租户过滤，前端各操作区以 isSuperAdmin 守卫保持超管专属；
+ * T5 停用/启用：超管任意 + 客户 PM 本公司账号，自己不可操作）。
  * 布局：左侧平台账号列表（点击选中）→ 右侧 header 区（用户名 bnCurrentKey 风格 +
  * 描述 maxlength 35 + 保存）+ 页签条（通用/角色/用户权限，通用默认 active）。
  * 最小字段集：只呈现平台已有字段（邮箱/显示名/角色/状态/描述），不引入
@@ -78,6 +80,11 @@ export default function UsersPage() {
   const [displayNameSaving, setDisplayNameSaving] = useState(false);
   const [displayNameSaveOk, setDisplayNameSaveOk] = useState('');
   const [displayNameSaveError, setDisplayNameSaveError] = useState('');
+
+  // 账号停用/启用（T5，spec-v1 US5）：超管任何账号 / 客户 PM 本公司账号；自己不可停
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState('');
+  const [statusOk, setStatusOk] = useState('');
 
   // 管理操作（建内部用户/建客户，超管专属，US-3）
   const [creating, setCreating] = useState(false);
@@ -147,9 +154,15 @@ export default function UsersPage() {
     setResendError('');
     setResendCopied(false);
     setDisplayNameSaveOk('');
+    setStatusError('');
+    setStatusOk('');
   }, [selectedUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSuperAdmin = user?.role === 'super_admin';
+
+  // 停用/启用权限（T5）：超管任何账号 / 客户 PM 本公司账号（列表已过滤）；自己不可停
+  const canManageStatus =
+    (isSuperAdmin || user?.role === 'customer_pm') && selectedUser?.id !== user?.id;
 
   // 角色下拉可选项（T3 按目标用户域：客户三档互调 / 内部两值互改；跨域由后端同域约束兜底）
   const roleOptions = selectedUser
@@ -332,6 +345,40 @@ export default function UsersPage() {
       setDisplayNameSaveError(errorMessage(err));
     } finally {
       setDisplayNameSaving(false);
+    }
+  }
+
+  /**
+   * 账号停用/启用（T5）：停用需确认（影响对方登录），启用直接执行。
+   * 权限（前端提示 + 后端兜底）：超管任何账号 / 客户 PM 本公司账号；自己不可停。
+   */
+  async function handleToggleStatus() {
+    if (!selectedUser) return;
+    if (selectedUser.isActive) {
+      const ok = window.confirm(
+        `确定停用 ${selectedUser.displayName}（${selectedUser.email}）的账号？停用后该用户无法登录。`,
+      );
+      if (!ok) return;
+    }
+    setStatusError('');
+    setStatusOk('');
+    setStatusSaving(true);
+    try {
+      const res = await apiFetch(`/api/users/${selectedUser.id}/status`, {
+        method: 'PATCH',
+        body: { isActive: !selectedUser.isActive },
+        schema: UpdateUserStatusResponseSchema,
+      });
+      setData((cur) =>
+        cur
+          ? { users: cur.users.map((u) => (u.id === res.user.id ? res.user : u)) }
+          : cur,
+      );
+      setStatusOk(res.user.isActive ? '账号已启用' : '账号已停用');
+    } catch (err) {
+      setStatusError(errorMessage(err));
+    } finally {
+      setStatusSaving(false);
     }
   }
 
@@ -652,6 +699,41 @@ export default function UsersPage() {
                           gap: '12px 24px',
                         }}
                       >
+                        {/* 账号状态（T5）：超管 / 客户 PM 可停用/启用（本公司账号）。
+                            停用确认弹窗；自己显示说明不可操作 */}
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <div className="up-label" style={{ marginTop: 8 }}>
+                            账号状态
+                          </div>
+                          {canManageStatus ? (
+                            <div className="up-form-row" style={{ marginTop: 4 }}>
+                              <button
+                                type="button"
+                                onClick={handleToggleStatus}
+                                disabled={statusSaving}
+                                className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                              >
+                                <span className="dx-button-text">
+                                  {statusSaving
+                                    ? '处理中…'
+                                    : selectedUser.isActive
+                                      ? '停用账号'
+                                      : '启用账号'}
+                                </span>
+                              </button>
+                              {statusOk && <span className="up-success">{statusOk}</span>}
+                              {statusError && <span className="up-error">{statusError}</span>}
+                            </div>
+                          ) : selectedUser.id === user?.id ? (
+                            <div style={{ fontSize: 13, color: 'var(--mwc-text-light)' }}>
+                              不能停用或启用自己的账号
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 13, color: 'var(--mwc-text-light)' }}>
+                              仅超管或客户项目经理可操作
+                            </div>
+                          )}
+                        </div>
                         <Field label="邮箱" value={selectedUser.email} />
                         {/* 昵称编辑（grilling）：本人或超管可改；保存 PATCH displayName，
                             改自己时刷新顶栏昵称（auth 上下文） */}

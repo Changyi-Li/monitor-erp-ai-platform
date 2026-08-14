@@ -14,6 +14,7 @@ import {
   ResetUserPasswordResponseSchema,
   SetPasswordResponseSchema,
   UpdateUserResponseSchema,
+  UpdateUserStatusResponseSchema,
   UsersListResponseSchema,
 } from '@monitor/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -26,7 +27,8 @@ import { connectOwner, resetTestDb } from './setup-test-db';
  *   成员管理=内部/该项目 PM、用户/客户列表=内部/超管 + customer_pm 本公司账号（T4））
  * - 邀请链接首次设密全流程；PM 项目内邀请/停用（不可跨项目、不可升级角色）
  * - 客户跨项目 403（同租户非成员）；跨租户 404（回归 #12 语义）；内部全访问
- * - 审计日志：登录/设密/权限变更/项目读写在 audit_logs
+ * - 账号级停用/启用（T5）：超管任意 / customer_pm 本公司；停用后登录/刷新 401
+ * - 审计日志：登录/设密/权限变更/状态变更/项目读写在 audit_logs
  */
 describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
   let app: NestFastifyApplication;
@@ -1009,6 +1011,331 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         headers: { authorization: `Bearer ${cuToken}` },
       });
       expect(cuDenied.statusCode).toBe(403);
+    });
+
+    // T5：账号级停用/启用（spec-v1 US5——客户 PM 停用本公司普通用户）
+    // 权限：超管任何账号（自己 409）；customer_pm 本公司账号（他司 404、自己 409）；
+    // internal/key_user 403；停用后登录/刷新 401；启用恢复；幂等 200
+    it('T5 超管停用内部账号：200 契约通过；登录/刷新 401；幂等 200；启用恢复登录', async () => {
+      // 目标：created@corp.test（internal；本用例先于「超管重置他人密码」，密码仍是 NewPass123）
+      const before = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'created@corp.test', password: 'NewPass123' },
+      });
+      expect(before.statusCode).toBe(200);
+      const refreshToken = (before.json() as { refreshToken: string }).refreshToken;
+
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const target = list
+        .json()
+        .users.find((u: { email: string }) => u.email === 'created@corp.test');
+      expect(target).toBeTruthy();
+
+      const status = (isActive: boolean) =>
+        app.inject({
+          method: 'PATCH',
+          url: `/api/users/${target.id}/status`,
+          headers: { authorization: `Bearer ${superAdminToken}` },
+          payload: { isActive },
+        });
+
+      const off = await status(false);
+      expect(off.statusCode).toBe(200);
+      expect(UpdateUserStatusResponseSchema.safeParse(off.json()).success).toBe(true);
+      expect((off.json() as { user: { isActive: boolean } }).user.isActive).toBe(false);
+
+      // 停用后：登录 401（统一文案）+ 轮换式刷新 401（会话立即不可续）
+      const loginDenied = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'created@corp.test', password: 'NewPass123' },
+      });
+      expect(loginDenied.statusCode).toBe(401);
+      const refreshDenied = await app.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        payload: { refreshToken },
+      });
+      expect(refreshDenied.statusCode).toBe(401);
+
+      // 幂等：重复停用 200（已授权，直接返回）
+      const again = await status(false);
+      expect(again.statusCode).toBe(200);
+
+      // 启用恢复登录
+      const on = await status(true);
+      expect(on.statusCode).toBe(200);
+      expect((on.json() as { user: { isActive: boolean } }).user.isActive).toBe(true);
+      const loginBack = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'created@corp.test', password: 'NewPass123' },
+      });
+      expect(loginBack.statusCode).toBe(200);
+    });
+
+    it('T5 客户 PM 停用本公司 key user：200 + 登录 401；他司账号 404；自己/超管 409；key_user/internal 403', async () => {
+      // 本公司（cidA）key user
+      const pmList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${pmToken}` },
+      });
+      const key = pmList
+        .json()
+        .users.find((u: { email: string }) => u.email === 'key@a.test');
+      expect(key).toBeTruthy();
+
+      const off = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${key.id}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: false },
+      });
+      expect(off.statusCode).toBe(200);
+      const keyLogin = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'key@a.test', password },
+      });
+      expect(keyLogin.statusCode).toBe(401);
+
+      // 启用恢复（后续用例依赖 keyUserToken 登录态）
+      const on = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${key.id}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: true },
+      });
+      expect(on.statusCode).toBe(200);
+      const keyBack = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'key@a.test', password },
+      });
+      expect(keyBack.statusCode).toBe(200);
+
+      // 他司账号（客户 B 的 PM，不在本公司 user_tenants）→ 404（不可见语义）
+      const adminList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const other = adminList
+        .json()
+        .users.find((u: { email: string }) => u.email === 'pm-b@b.test');
+      expect(other).toBeTruthy();
+      const cross = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${other.id}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: false },
+      });
+      expect(cross.statusCode).toBe(404);
+
+      // 自己 → 409（防锁死）；超管停自己同样 409
+      const pmMe = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { authorization: `Bearer ${pmToken}` },
+      });
+      const pmId = (pmMe.json() as { user: { id: string } }).user.id;
+      const self409 = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${pmId}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: false },
+      });
+      expect(self409.statusCode).toBe(409);
+      const adminMe = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const adminId = (adminMe.json() as { user: { id: string } }).user.id;
+      const adminSelf = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${adminId}/status`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { isActive: false },
+      });
+      expect(adminSelf.statusCode).toBe(409);
+
+      // key_user / internal → 403（方法级 @Roles 仅超管 + customer_pm）
+      const keyDenied = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${key.id}/status`,
+        headers: { authorization: `Bearer ${keyUserToken}` },
+        payload: { isActive: false },
+      });
+      expect(keyDenied.statusCode).toBe(403);
+      const internalDenied = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${key.id}/status`,
+        headers: { authorization: `Bearer ${internalToken}` },
+        payload: { isActive: false },
+      });
+      expect(internalDenied.statusCode).toBe(403);
+
+      // 非法 body（契约校验）→ 400
+      const badBody = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${key.id}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: 'yes' },
+      });
+      expect(badBody.statusCode).toBe(400);
+    });
+
+    it('T5 边界：客户 PM 不能停本公司其他 PM（403）；超管可停；fellow PM 停用恢复', async () => {
+      // fellow PM：t3cu（T3 用例收尾已调回 customer_user）→ 升 PM + 插入本公司租户
+      const owner = connectOwner();
+      try {
+        await owner`update users set role = 'customer_pm' where email = 't3cu@corp.test'`;
+        await owner`
+          insert into user_tenants (user_id, customer_id)
+          select id, ${cidA} from users where email = 't3cu@corp.test'`;
+      } finally {
+        await owner.end();
+      }
+      try {
+        const list = await app.inject({
+          method: 'GET',
+          url: '/api/users',
+          headers: { authorization: `Bearer ${superAdminToken}` },
+        });
+        const fellow = list
+          .json()
+          .users.find((u: { email: string }) => u.email === 't3cu@corp.test');
+        expect(fellow).toBeTruthy();
+
+        // 客户 PM 停本公司其他 PM → 403（quiz 固化：PM 只管理 Key User/普通用户）
+        const denied = await app.inject({
+          method: 'PATCH',
+          url: `/api/users/${fellow.id}/status`,
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { isActive: false },
+        });
+        expect(denied.statusCode).toBe(403);
+
+        // 超管不受限：停用 → 200，再启用恢复（fellow 后续无依赖，仍恢复卫生）
+        const off = await app.inject({
+          method: 'PATCH',
+          url: `/api/users/${fellow.id}/status`,
+          headers: { authorization: `Bearer ${superAdminToken}` },
+          payload: { isActive: false },
+        });
+        expect(off.statusCode).toBe(200);
+        const on = await app.inject({
+          method: 'PATCH',
+          url: `/api/users/${fellow.id}/status`,
+          headers: { authorization: `Bearer ${superAdminToken}` },
+          payload: { isActive: true },
+        });
+        expect(on.statusCode).toBe(200);
+      } finally {
+        // 清理：移除租户行 + 调回 customer_user（T3 收尾状态）
+        const owner2 = connectOwner();
+        try {
+          await owner2`
+            delete from user_tenants
+            where user_id = (select id from users where email = 't3cu@corp.test')`;
+          await owner2`update users set role = 'customer_user' where email = 't3cu@corp.test'`;
+        } finally {
+          await owner2.end();
+        }
+      }
+    });
+
+    it('T5 待激活账号：启用 → 400（防死锁邀请流程）；邀请链接仍可用', async () => {
+      const invite = await inviteMember(internalToken, projectAId, {
+        email: 't5pending@a.test',
+        role: 'customer_user',
+      });
+      expect(invite.status).toBe(201);
+      const token = new URL(invite.inviteUrl!).searchParams.get('token')!;
+
+      const list = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const pending = list
+        .json()
+        .users.find((u: { email: string }) => u.email === 't5pending@a.test');
+      expect(pending).toBeTruthy();
+      expect(pending.isActive).toBe(false);
+
+      // 超管 / 客户 PM（本公司账号）启用 → 400（没有「启用」一说，应走邀请链接）
+      const enable = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${pending.id}/status`,
+        headers: { authorization: `Bearer ${superAdminToken}` },
+        payload: { isActive: true },
+      });
+      expect(enable.statusCode).toBe(400);
+      const pmEnable = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${pending.id}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: true },
+      });
+      expect(pmEnable.statusCode).toBe(400);
+
+      // 邀请链接未被破坏（未死锁：设密仍可激活）
+      const activate = await app.inject({
+        method: 'POST',
+        url: '/api/auth/set-password',
+        payload: { token, password },
+      });
+      expect(activate.statusCode).toBe(200);
+
+      // 清理：移除测试账号的租户/成员行（用户行保留无妨）
+      const owner = connectOwner();
+      try {
+        await owner`
+          delete from project_members
+          where user_id = (select id from users where email = 't5pending@a.test')`;
+        await owner`
+          delete from user_tenants
+          where user_id = (select id from users where email = 't5pending@a.test')`;
+      } finally {
+        await owner.end();
+      }
+    });
+
+    it('T5 停用/启用落审计 user.status_change（actor + metadata 含目标邮箱与目标状态）', async () => {
+      const owner = connectOwner();
+      try {
+        const rows = await owner`
+          select action, actor_user_id, actor_role, resource_type, resource_id, metadata
+          from audit_logs where action = 'user.status_change' order by created_at asc`;
+        const withMeta = rows.map((r) => ({
+          ...r,
+          meta: JSON.parse(r.metadata as string) as Record<string, unknown>,
+        }));
+        // 超管停用 created@corp.test（第一条：actor=超管，目标邮箱 + isActive:false）
+        const adminOff = withMeta.find(
+          (r) => r.meta.email === 'created@corp.test' && r.meta.isActive === false,
+        );
+        expect(adminOff).toBeTruthy();
+        expect(adminOff!.actor_role).toBe('super_admin');
+        expect(adminOff!.resource_type).toBe('user');
+        expect(adminOff!.resource_id).toBeTruthy();
+        // 客户 PM 停用本公司 key user（actor=customer_pm）
+        const pmOff = withMeta.find(
+          (r) => r.meta.email === 'key@a.test' && r.meta.isActive === false,
+        );
+        expect(pmOff).toBeTruthy();
+        expect(pmOff!.actor_role).toBe('customer_pm');
+      } finally {
+        await owner.end();
+      }
     });
 
     // #39：安全页签后端 —— 重置密码（POST /api/users/:id/reset-password）
