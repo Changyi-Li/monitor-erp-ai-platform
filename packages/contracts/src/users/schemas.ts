@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@monitor/shared';
+import {
+  INTERNAL_ROLES,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  USER_ROLES,
+} from '@monitor/shared';
 import { UserSchema } from '../auth/schemas';
 
 /**
@@ -29,7 +34,7 @@ export const CreateUserRequestSchema = z.object({
     .min(PASSWORD_MIN_LENGTH, { error: `密码至少 ${PASSWORD_MIN_LENGTH} 位` })
     .max(PASSWORD_MAX_LENGTH),
   displayName: z.string().trim().min(1).max(64).optional(),
-  role: z.enum(['super_admin', 'internal']),
+  role: z.enum(INTERNAL_ROLES),
 });
 export type CreateUserRequest = z.output<typeof CreateUserRequestSchema>;
 
@@ -40,14 +45,14 @@ export type CreateUserResponse = z.output<typeof CreateUserResponseSchema>;
 
 /**
  * 更新用户资料（#37/#38 + grilling 昵称编辑）：PATCH 部分语义，字段均可选——
- * description（null 清空，DB 列可空）+ role（平台角色互改，仅可赋值
- * super_admin/internal；customer 走邀请流程不可在此赋值，且不能改自己的角色）
- * + displayName（昵称：本人或超管可改，唯一性查重 409）。
+ * description（null 清空，DB 列可空）+ role（T3：全部 5 个平台角色可赋值，
+ * 服务端按「同域互转」约束：客户三档互调、内部两值互改，customer ↔ internal 禁止
+ * 互转 400；且不能改自己的角色）+ displayName（昵称：本人或超管可改，唯一性查重 409）。
  * 字段级权限在 service 层按 actor 判定（入口已开放到所有登录角色）。
  */
 export const UpdateUserRequestSchema = z.object({
   description: z.string().max(35).nullable().optional(),
-  role: z.enum(['super_admin', 'internal']).optional(),
+  role: z.enum(USER_ROLES).optional(),
   displayName: z.string().trim().min(1).max(64).optional(),
 });
 export type UpdateUserRequest = z.output<typeof UpdateUserRequestSchema>;

@@ -16,6 +16,10 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const CUSTOMER_ROLES = ['customer_pm', 'customer_key_user', 'customer_user'] as const;
 export type CustomerRole = (typeof CUSTOMER_ROLES)[number];
 
+/** 内部系角色（超管 ⊇ 内部；与 CUSTOMER_ROLES 互为补集，同域互转约束两侧） */
+export const INTERNAL_ROLES = ['super_admin', 'internal'] as const;
+export type InternalRole = (typeof INTERNAL_ROLES)[number];
+
 /** 成员邀请可选档位（账号平台角色；customer_pm 档只能由建客户/超管产生） */
 export const CUSTOMER_INVITE_ROLES = ['customer_key_user', 'customer_user'] as const;
 export type CustomerInviteRole = (typeof CUSTOMER_INVITE_ROLES)[number];

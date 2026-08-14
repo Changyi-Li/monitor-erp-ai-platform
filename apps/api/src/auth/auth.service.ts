@@ -347,7 +347,9 @@ export class AuthService {
    * - 目标鉴权：改自己 = 任何登录角色；改别人 = 仅超管（同 reset-password 模式）
    * - displayName（昵称）：本人或超管（目标鉴权已覆盖）
    * - description：仅超管（自始至终超管专属，不随昵称编辑放开）
-   * - role：仅超管 + 不能改自己（防最后一名超管把自己降级锁死平台）+ customer 不可改
+   * - role：仅超管 + 不能改自己（防最后一名超管把自己降级锁死平台）+ 同域互转
+   *   （T3：客户三档之间可互调——超管可把客户用户调整为 customer_pm；内部两值互改；
+   *   customer ↔ internal 禁止互转 400，平台域边界不可跨越）
    * 先查后更，未命中 404（防探测语义同客户）。
    */
   async updateUser(
@@ -375,8 +377,12 @@ export class AuthService {
       if (actor.sub === userId) {
         throw new ConflictException('不能修改自己的角色');
       }
-      if (isCustomerRole(existing.role as UserRole)) {
-        throw new ConflictException('客户角色不可在此修改');
+      // T3：同域互转——目标角色与原角色同在客户域或同在内部域才允许；
+      // 客户 PM 档（customer_pm）不再锁定，超管可把客户用户在客户三档间互调
+      const sameDomain =
+        isCustomerRole(existing.role as UserRole) === isCustomerRole(input.role);
+      if (!sameDomain) {
+        throw new BadRequestException('客户角色与内部角色不可互转');
       }
     }
 

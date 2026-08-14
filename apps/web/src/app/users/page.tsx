@@ -18,7 +18,7 @@ import {
 import { apiFetch, errorMessage } from '../../lib/api';
 import { useAuth } from '../../components/auth-provider';
 import { isCustomerRole, userRoleLabel } from '../../lib/roles';
-import type { UserRole } from '@monitor/shared';
+import { CUSTOMER_ROLES, INTERNAL_ROLES, type UserRole } from '@monitor/shared';
 
 /**
  * 用户管理（内部/超管专属；issue #37 模仿原版 WebClient「用户」程序布局）。
@@ -150,13 +150,20 @@ export default function UsersPage() {
 
   const isSuperAdmin = user?.role === 'super_admin';
 
+  // 角色下拉可选项（T3 按目标用户域：客户三档互调 / 内部两值互改；跨域由后端同域约束兜底）
+  const roleOptions = selectedUser
+    ? isCustomerRole(selectedUser.role)
+      ? CUSTOMER_ROLES
+      : INTERNAL_ROLES
+    : [];
+
   // header 保存按钮：保存页面上所有操作（描述 + 角色变更一起提交，用户定义）
   async function handleSaveAll(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedUser) return;
-    // 角色变更仅当目标非自己、非客户系角色（后端对应 409 防护；T3 放开客户三档互调）时随描述一起提交
-    const canChangeRole =
-      isSuperAdmin && selectedUser.id !== user?.id && !isCustomerRole(selectedUser.role);
+    // 角色变更仅当超管改别人时随描述一起提交（T3：客户用户也可改——客户三档互调，
+    // 下拉只出对应域档位，跨域由后端同域约束 400 兜底）
+    const canChangeRole = isSuperAdmin && selectedUser.id !== user?.id;
     const roleChanged = canChangeRole && roleDraft !== selectedUser.role;
     setSaveError('');
     setSaveOk('');
@@ -724,14 +731,11 @@ export default function UsersPage() {
                               : '客户普通用户：查看被授权项目与知识库，提交问题。'}
                     </p>
                     {isSuperAdmin ? (
-                      // #38：超管可改平台角色（self 与 customer 不可改，用户已拍板）
+                      // T3：超管可改平台角色（自己除外）；档位按目标用户域给出——
+                      // 客户三档互调（含升 customer_pm），内部两值互改；跨域由后端同域约束兜底
                       selectedUser.id === user?.id ? (
                         <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light)' }}>
                           不能修改自己的角色
-                        </p>
-                      ) : isCustomerRole(selectedUser.role) ? (
-                        <p style={{ margin: '8px 0 0', color: 'var(--mwc-text-light)' }}>
-                          客户角色不可在此修改
                         </p>
                       ) : (
                         <form
@@ -745,7 +749,7 @@ export default function UsersPage() {
                             className="up-input"
                             aria-label="角色"
                           >
-                            {(['internal', 'super_admin'] as const).map((r) => (
+                            {roleOptions.map((r) => (
                               <option key={r} value={r}>
                                 {userRoleLabel(r)}
                               </option>

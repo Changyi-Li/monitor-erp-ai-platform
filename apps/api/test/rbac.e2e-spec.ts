@@ -780,8 +780,8 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       ).toBe('internal');
     });
 
-    // #38：角色防护矩阵 —— 非法角色 400 / internal 与客户 403 / 自己 409 / customer 目标 409
-    it('PATCH 角色防护：非法角色 400；internal/客户 403；自己 409；customer 目标 409', async () => {
+    // #38+T3：角色防护矩阵 —— 跨域 400（internal↔customer 双向）/ internal 与客户 403 / 自己 409
+    it('PATCH 角色防护：跨域 400 双向；internal/客户 403；自己 409', async () => {
       const list = await app.inject({
         method: 'GET',
         url: '/api/users',
@@ -797,7 +797,7 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(adminUser).toBeTruthy();
       expect(pmUser).toBeTruthy();
 
-      // 非法角色（客户角色不可在此赋值，T3 放开客户三档互调）→ 400
+      // 跨域：internal 目标赋客户角色 → 400（T3 同域约束，取代旧契约枚举拒绝）
       const badRole = await app.inject({
         method: 'PATCH',
         url: `/api/users/${target.id}`,
@@ -833,14 +833,14 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       });
       expect(selfChange.statusCode).toBe(409);
 
-      // customer 目标改角色 → 409（客户账号走邀请流程创建，不可在此改角色）
+      // 跨域：customer 目标赋内部角色 → 400（T3 同域约束：客户三档互调，↔内部禁止）
       const customerTarget = await app.inject({
         method: 'PATCH',
         url: `/api/users/${pmUser.id}`,
         headers: { authorization: `Bearer ${superAdminToken}` },
         payload: { role: 'super_admin' },
       });
-      expect(customerTarget.statusCode).toBe(409);
+      expect(customerTarget.statusCode).toBe(400);
     });
 
     // #38：角色变更落审计 user.update（metadata 含 role 字段）
@@ -856,6 +856,97 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         expect(metadata.role).toBe('internal'); // 最新一条 = 改回 internal 的角色变更
       } finally {
         await owner.end();
+      }
+    });
+
+    // T3：客户 PM 产生（建客户默认 PM 之外的另一来源）——超管可调客户三档：
+    // 互调 200 回环、升 PM 后新登录 JWT 生效且成员管理权真实可用、跨域 400
+    it('T3 角色调整：客户三档互调 200（升 PM 后新登录成员管理生效）；跨域 400', async () => {
+      // 目标用户：register（默认 internal）→ owner 降为 customer_user（等价存量迁移/建客户联系人）
+      const reg = await register('t3cu@corp.test');
+      const owner = connectOwner();
+      try {
+        await owner`update users set role = 'customer_user' where id = ${reg.id}`;
+      } finally {
+        await owner.end();
+      }
+
+      const patch = (id: string, role: string) =>
+        app.inject({
+          method: 'PATCH',
+          url: `/api/users/${id}`,
+          headers: { authorization: `Bearer ${superAdminToken}` },
+          payload: { role },
+        });
+
+      // 客户三档互调全部 200（customer_user → key_user → pm）
+      const toKey = await patch(reg.id, 'customer_key_user');
+      expect(toKey.statusCode).toBe(200);
+      expect(UpdateUserResponseSchema.safeParse(toKey.json()).success).toBe(true);
+      expect((toKey.json() as { user: { role: string } }).user.role).toBe('customer_key_user');
+      const toPm = await patch(reg.id, 'customer_pm');
+      expect(toPm.statusCode).toBe(200);
+      expect(UpdateUserResponseSchema.safeParse(toPm.json()).success).toBe(true);
+      expect((toPm.json() as { user: { role: string } }).user.role).toBe('customer_pm');
+
+      // 非法角色（zod 枚举拒绝，契约层）→ 400
+      const bogus = await patch(reg.id, 'bogus');
+      expect(bogus.statusCode).toBe(400);
+
+      // 非超管改自己角色 → 403（目标鉴权放行自己，role 字段级守卫拒绝）
+      const selfDenied = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${internalUserId}`,
+        headers: { authorization: `Bearer ${internalToken}` },
+        payload: { role: 'super_admin' },
+      });
+      expect(selfDenied.statusCode).toBe(403);
+
+      // 先建立租户/成员关系，再登录：JWT 携带 customer_pm 声明 + 租户上下文
+      const owner2 = connectOwner();
+      try {
+        await owner2`insert into user_tenants (user_id, customer_id) values (${reg.id}, ${cidA})`;
+        await owner2`insert into project_members (project_id, user_id) values (${projectAId}, ${reg.id})`;
+      } finally {
+        await owner2.end();
+      }
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 't3cu@corp.test', password },
+      });
+      expect(login.statusCode).toBe(200);
+      const t3Token = (login.json() as { accessToken: string }).accessToken;
+      const me = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { authorization: `Bearer ${t3Token}` },
+      });
+      expect((me.json() as { user: { role: string } }).user.role).toBe('customer_pm');
+
+      // 成员管理权真实生效（customer_pm + active 成员 → 成员列表 200）
+      const members = await app.inject({
+        method: 'GET',
+        url: `/api/projects/${projectAId}/members`,
+        headers: { authorization: `Bearer ${t3Token}` },
+      });
+      expect(members.statusCode).toBe(200);
+      expect(MembersListResponseSchema.safeParse(members.json()).success).toBe(true);
+
+      // 客户 → 内部跨域 → 400；调回 customer_user 收尾
+      const cross = await patch(reg.id, 'internal');
+      expect(cross.statusCode).toBe(400);
+      const back = await patch(reg.id, 'customer_user');
+      expect(back.statusCode).toBe(200);
+      expect(UpdateUserResponseSchema.safeParse(back.json()).success).toBe(true);
+
+      // 清理：移除测试成员关系（防污染后续用例；用户行保留无妨）
+      const owner3 = connectOwner();
+      try {
+        await owner3`delete from project_members where user_id = ${reg.id}`;
+        await owner3`delete from user_tenants where user_id = ${reg.id}`;
+      } finally {
+        await owner3.end();
       }
     });
 
