@@ -319,11 +319,17 @@ describe('User profile e2e：昵称编辑 + 客户邀请链接重发', () => {
       expect(res.status).toBe(409);
     });
 
-    it('权限矩阵：internal / customer 重发 → 403', async () => {
+    it('权限矩阵：internal 重发 → 403；customer_pm 他司账号 → 404、本公司 PM（含自己）→ 403', async () => {
       const byInternal = await resendInvite(internalToken, invitedUserId);
       expect(byInternal.status).toBe(403);
+      // T6 + code review：customer_pm 重发——租户校验先行（跨租户一律 404 防探测，
+      // 即使目标已激活/非客户邀请也不泄露存在性与状态）
       const users = await listUsers(superAdminToken);
       const active = users.find((u) => u.email === 'contact-b@tenant-b.test')!;
+      const otherTenant = await resendInvite(customerToken, invitedUserId);
+      expect(otherTenant.status).toBe(404);
+      // 本公司 PM（contact-b 即 customerToken 本人，customer_pm 档）→ 403
+      // （PM 不管理 PM；同租户已激活非 PM → 409 已由 rbac.e2e T6 重发用例覆盖）
       const byCustomer = await resendInvite(customerToken, active.id);
       expect(byCustomer.status).toBe(403);
     });

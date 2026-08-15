@@ -13,6 +13,8 @@ import {
   type CreateUserRequest,
   type CreateUserResponse,
   type InviteInfoResponse,
+  type InviteUserRequest,
+  type InviteUserResponse,
   type LoginRequest,
   type LoginResponse,
   type MeResponse,
@@ -279,31 +281,59 @@ export class AuthService {
   }
 
   /**
-   * 超管创建内部用户（US-3，@Roles(super_admin) 守卫）：仿 register 查重/hash/insert，
-   * 但显式写 role（super_admin/internal），并落审计 user.create。
+   * 新账号预检（createUser / inviteCompanyUser 共用；register 为自助注册旧流程保留原样）：
+   * 邮箱小写化 + 默认昵称（邮箱前缀）+ 邮箱/昵称唯一查重（409 友好提示，DB 唯一索引兜底）。
    */
-  async createUser(input: CreateUserRequest, actor: AuthUser): Promise<CreateUserResponse> {
-    const email = input.email.toLowerCase();
-    const displayName = input.displayName?.trim() ?? email.split('@')[0] ?? 'User';
-
+  private async ensureNewAccountUnique(
+    email: string,
+    displayName?: string,
+  ): Promise<{ email: string; displayName: string }> {
+    const normalized = email.toLowerCase();
+    const name = displayName?.trim() ?? normalized.split('@')[0] ?? 'User';
     const existing = await this.db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.email, email))
+      .where(eq(users.email, normalized))
       .limit(1);
     if (existing.length > 0) {
       throw new ConflictException('该邮箱已注册');
     }
-
     // 昵称唯一（#37 迭代）：display_name 部分唯一索引兜底，服务层先行查重给友好提示
     const dupName = await this.db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.displayName, displayName))
+      .where(eq(users.displayName, name))
       .limit(1);
     if (dupName.length > 0) {
       throw new ConflictException('该昵称已被使用');
     }
+    return { email: normalized, displayName: name };
+  }
+
+  /**
+   * 客户角色操作目标的租户归属校验（updateUserStatus / resendInviteUser 共用）：
+   * 目标不在本公司 → 404「用户不存在」（不可见语义，跨租户防探测）。
+   */
+  private async assertSameTenantOr404(userId: string, tenantId: string): Promise<void> {
+    const [tenancy] = await this.db
+      .select({ userId: userTenants.userId })
+      .from(userTenants)
+      .where(and(eq(userTenants.userId, userId), eq(userTenants.customerId, tenantId)))
+      .limit(1);
+    if (!tenancy) {
+      throw new NotFoundException('用户不存在');
+    }
+  }
+
+  /**
+   * 超管创建内部用户（US-3，@Roles(super_admin) 守卫）：仿 register 查重/hash/insert，
+   * 但显式写 role（super_admin/internal），并落审计 user.create。
+   */
+  async createUser(input: CreateUserRequest, actor: AuthUser): Promise<CreateUserResponse> {
+    const { email, displayName } = await this.ensureNewAccountUnique(
+      input.email,
+      input.displayName,
+    );
 
     const passwordHash = await this.password.hash(input.password);
     const [user] = await this.db
@@ -332,9 +362,10 @@ export class AuthService {
   }
 
   /**
-   * 用户管理列表（T4 对公司开放）：内部/超管全量平台账号；customer_pm 仅本公司账号
-   * （join user_tenants 按租户过滤——users 为平台表无 RLS 须显式过滤；controller 已
-   * 拒绝 customer_key_user/customer_user）。
+   * 用户管理列表（T4/#53）：内部/超管全量平台账号；所有客户角色（customer_pm /
+   * customer_key_user / customer_user）统一看本公司全部账号——join user_tenants
+   * 按租户过滤（users 为平台表无 RLS 须显式过滤）。公司花名册只读：管理操作
+   * （邀请/停用/重发）仍按角色在 controller/service 层收着。
    */
   async listUsers(actor: AuthUser): Promise<UsersListResponse> {
     if (isCustomerRole(actor.role)) {
@@ -485,21 +516,12 @@ export class AuthService {
     }
 
     if (actor.role !== 'super_admin') {
-      // customer_pm：目标必须是本公司账号（user_tenants 租户过滤）
+      // customer_pm：目标必须是本公司账号（user_tenants 租户过滤，跨租户 404 防探测）
       const ctx = this.tenantContext.current;
       if (!ctx?.tenantId) {
         throw new InternalServerErrorException('缺少租户上下文');
       }
-      const [tenancy] = await this.db
-        .select({ userId: userTenants.userId })
-        .from(userTenants)
-        .where(
-          and(eq(userTenants.userId, userId), eq(userTenants.customerId, ctx.tenantId)),
-        )
-        .limit(1);
-      if (!tenancy) {
-        throw new NotFoundException('用户不存在');
-      }
+      await this.assertSameTenantOr404(userId, ctx.tenantId);
       // 客户 PM 不能停用/启用本公司其他 PM（quiz 固化：PM 只管理 Key User/普通用户，
       // 防客户成员管理被锁死）；超管不受限
       if (existing.role === 'customer_pm') {
@@ -538,7 +560,70 @@ export class AuthService {
   }
 
   /**
-   * 重发客户邀请（grilling：未激活客户链接再发放，仅超管）：
+   * 客户 PM 邀请本公司用户（T6，spec-v1 US5 邀请半场，@Roles(customer_pm)）：
+   * 新账号 = 待激活占位账号（随机密码不可登录）+ 一次性邀请链接（7 天、绑定邮箱，
+   * inviteKind='customer'——/invite 页需输入被邀请邮箱才能激活，防链接转发）
+   * + user_tenants 归属本公司（租户上下文；users 为平台表无 RLS 须显式写入）。
+   * 档位限 customer_key_user/customer_user（契约层限定；PM 档由建客户/超管产生）。
+   * 已注册邮箱 / 昵称重复 → 409（与 createUser 同语义：公司级邀请只建新账号，
+   * 已激活用户加项目走成员邀请流程，待激活账号重发走 resend-invite）。
+   * 超管显式拒绝（RolesGuard 对 super_admin 全放行，但超管邀客户用户需目标公司
+   * 选择器——契约无 customerId 字段，留待后续票）。
+   */
+  async inviteCompanyUser(
+    input: InviteUserRequest,
+    actor: AuthUser,
+  ): Promise<InviteUserResponse> {
+    if (actor.role !== 'customer_pm') {
+      throw new ForbiddenException('仅客户项目经理可邀请本公司用户');
+    }
+    const ctx = this.tenantContext.current;
+    if (!ctx?.tenantId) {
+      throw new InternalServerErrorException('缺少租户上下文');
+    }
+    const tenantId = ctx.tenantId; // 收窄为 string；事务闭包内属性收窄不保留，须先捕获
+    const { email, displayName } = await this.ensureNewAccountUnique(
+      input.email,
+      input.displayName,
+    );
+
+    // 原子性：占位账号 + 租户归属同事务（对齐 CustomersService.create 防半成品先例）——
+    // user_tenants 插入失败整单回滚，不留无归属孤儿账号
+    const { token, user } = await this.db.transaction(async (tx) => {
+      const created = await this.invite.createInvitedUser(tx, {
+        email,
+        displayName,
+        inviteKind: 'customer',
+        role: input.role,
+      });
+      await tx.insert(userTenants).values({
+        userId: created.user.id,
+        customerId: tenantId,
+      });
+      return created;
+    });
+
+    await this.audit.record(AUDIT_ACTIONS.USER_INVITE, {
+      actorUserId: actor.sub,
+      actorRole: actor.role,
+      resourceType: 'user',
+      resourceId: user.id,
+      metadata: { email, role: input.role, companyInvite: true },
+    });
+
+    return {
+      inviteUrl: this.invite.buildInviteUrl(token),
+      expiresAt: user.inviteExpiresAt!.toISOString(),
+      user: toListItem(user),
+    };
+  }
+
+  /**
+   * 重发客户邀请（grilling：未激活客户链接再发放）：超管任何客户账号；
+   * customer_pm 本公司账号（T6：join user_tenants 租户校验，他司 404 不可见语义；
+   * 不能重发本公司其他 PM 的邀请 403，与 T5 停用语义一致）。
+   * 顺序关键（code review）：非超管的租户校验必须先于账号状态检查——否则
+   * 已激活/非客户邀请的他司账号会先抛 409，泄露存在性与账号状态（跨租户防探测 = 404）。
    * 重新生成一次性 token——旧链接立即失效，有效期刷新为 7 天（InviteService 语义）。
    * 安全边界：已激活用户 → 409（激活后无邀请可言）；项目成员邀请账号（inviteKind=null）→ 409
    * （该类邀请在项目成员页面重发，避免两处入口语义混乱）。
@@ -551,6 +636,17 @@ export class AuthService {
       .limit(1);
     if (!user) {
       throw new NotFoundException('用户不存在');
+    }
+    if (actor.role !== 'super_admin') {
+      // 租户校验先行（跨租户一律 404 防探测）；且不能重发本公司其他 PM 的邀请
+      const ctx = this.tenantContext.current;
+      if (!ctx?.tenantId) {
+        throw new InternalServerErrorException('缺少租户上下文');
+      }
+      await this.assertSameTenantOr404(userId, ctx.tenantId);
+      if (user.role === 'customer_pm') {
+        throw new ForbiddenException('不能重发客户项目经理的邀请');
+      }
     }
     if (user.isActive) {
       throw new ConflictException('该用户已激活，无需重发邀请链接');

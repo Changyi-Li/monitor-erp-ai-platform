@@ -6,11 +6,13 @@ import { Test } from '@nestjs/testing';
 import {
   CreateUserResponseSchema,
   CustomerCreateResponseSchema,
+  InviteUserResponseSchema,
   MemberInviteResponseSchema,
   MembersListResponseSchema,
   ProjectCreateResponseSchema,
   ProjectGetResponseSchema,
   ProjectsListResponseSchema,
+  ResendInviteResponseSchema,
   ResetUserPasswordResponseSchema,
   SetPasswordResponseSchema,
   UpdateUserResponseSchema,
@@ -24,7 +26,7 @@ import { connectOwner, resetTestDb } from './setup-test-db';
 /**
  * RBAC / 用户管理 / 项目边界 e2e（issue #13 验收）：
  * - 权限矩阵 API 级覆盖：角色 × 端点（建客户=超管、建项目=内部+、
- *   成员管理=内部/该项目 PM、用户/客户列表=内部/超管 + customer_pm 本公司账号（T4））
+ *   成员管理=内部/该项目 PM、用户/客户列表=内部/超管 + 所有客户角色本公司账号（T4/#53））
  * - 邀请链接首次设密全流程；PM 项目内邀请/停用（不可跨项目、不可升级角色）
  * - 客户跨项目 403（同租户非成员）；跨租户 404（回归 #12 语义）；内部全访问
  * - 账号级停用/启用（T5）：超管任意 / customer_pm 本公司；停用后登录/刷新 401
@@ -497,9 +499,9 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
   });
 
   describe('平台管理：用户与客户列表', () => {
-    // T4：用户管理页对公司开放——customer_pm 也 200（本公司账号，见 T4 专属用例）；
-    // 非 PM 客户角色仍 403
-    it('GET /api/users：内部 200 全量（含客户账号）；customer_pm 200；key_user 403', async () => {
+    // T4/#53：用户管理页对公司开放——customer_pm 200（本公司账号，见 T4 专属用例）；
+    // key_user/customer_user 200 且同样可见本公司账号（#53：公司花名册对所有客户角色只读）
+    it('GET /api/users：内部 200 全量（含客户账号）；customer_pm 200；key_user 200 本公司账号', async () => {
       const ok = await app.inject({
         method: 'GET',
         url: '/api/users',
@@ -521,12 +523,22 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       });
       expect(pmOk.statusCode).toBe(200);
 
-      const denied = await app.inject({
+      // #53：key_user 200 且可见本公司全部账号（含 PM 与 key user 彼此）
+      const self = await app.inject({
         method: 'GET',
         url: '/api/users',
         headers: { authorization: `Bearer ${keyUserToken}` },
       });
-      expect(denied.statusCode).toBe(403);
+      expect(self.statusCode).toBe(200);
+      expect(UsersListResponseSchema.safeParse(self.json()).success).toBe(true);
+      const keyEmails = (self.json() as { users: { email: string }[] }).users.map(
+        (u) => u.email,
+      );
+      expect(keyEmails).toContain('pm@a.test');
+      expect(keyEmails).toContain('key@a.test');
+      // 平台账号与他司账号不可见
+      expect(keyEmails).not.toContain('admin@corp.test');
+      expect(keyEmails).not.toContain('pm-b@b.test');
     });
 
     // US-3：超管创建内部用户（方法级 @Roles('super_admin') 覆盖类级 super_admin+internal）
@@ -967,9 +979,9 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       }
     });
 
-    // T4：用户管理页对公司开放——customer_pm 可见本公司账号（租户过滤）；
-    // 非 PM 客户角色仍 403；平台账号与跨租户账号不可见
-    it('T4 用户列表：customer_pm 200 仅本公司账号；key_user 403', async () => {
+    // T4/#53：用户管理页对公司开放——所有客户角色可见本公司账号（租户过滤）；
+    // 平台账号与跨租户账号不可见
+    it('T4 用户列表：customer_pm 200 仅本公司账号；key_user/customer_user 200 本公司账号', async () => {
       const pmList = await app.inject({
         method: 'GET',
         url: '/api/users',
@@ -989,15 +1001,23 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(pmEmails).not.toContain('created@corp.test');
       expect(pmEmails).not.toContain('pm-b@b.test');
 
-      // customer_key_user → 403（列表仅内部/超管/customer_pm）
-      const keyDenied = await app.inject({
+      // #53：customer_key_user → 200 且同样可见本公司账号（含 PM）
+      const keyList = await app.inject({
         method: 'GET',
         url: '/api/users',
         headers: { authorization: `Bearer ${keyUserToken}` },
       });
-      expect(keyDenied.statusCode).toBe(403);
+      expect(keyList.statusCode).toBe(200);
+      const keyEmails = (keyList.json() as { users: { email: string }[] }).users.map(
+        (u) => u.email,
+      );
+      expect(keyEmails).toContain('pm@a.test');
+      expect(keyEmails).toContain('key@a.test');
+      expect(keyEmails).not.toContain('admin@corp.test');
+      expect(keyEmails).not.toContain('pm-b@b.test');
 
-      // customer_user → 403（T3 用例收尾已把 t3cu 调回 customer_user，重新登录取最新角色）
+      // #53：customer_user → 200（T3 用例收尾已把 t3cu 调回 customer_user 且清理了
+      // 租户行——重新登录取最新角色；无租户 → 空列表，但不泄露任何平台/他司账号）
       const cuLogin = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
@@ -1005,12 +1025,94 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       });
       expect(cuLogin.statusCode).toBe(200);
       const cuToken = (cuLogin.json() as { accessToken: string }).accessToken;
-      const cuDenied = await app.inject({
+      const cuList = await app.inject({
         method: 'GET',
         url: '/api/users',
         headers: { authorization: `Bearer ${cuToken}` },
       });
-      expect(cuDenied.statusCode).toBe(403);
+      expect(cuList.statusCode).toBe(200);
+      const cuEmails = (cuList.json() as { users: { email: string }[] }).users.map(
+        (u) => u.email,
+      );
+      expect(cuEmails).not.toContain('admin@corp.test');
+      expect(cuEmails).not.toContain('pm-b@b.test');
+    });
+
+    // #53：普通客户用户写操作边界——可改自己昵称/密码，但改别人/改描述仍拒绝
+    it('#53 普通客户用户只读边界：改自己昵称 200；改别人 403；改描述 403；重置自己密码 200', async () => {
+      const keyList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${keyUserToken}` },
+      });
+      const self = (keyList.json() as { users: { id: string; email: string }[] }).users.find(
+        (u) => u.email === 'key@a.test',
+      )!;
+
+      // 改自己昵称 → 200（本人可改，grilling 语义）
+      const rename = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${self.id}`,
+        headers: { authorization: `Bearer ${keyUserToken}` },
+        payload: { displayName: 'T7自改昵称' },
+      });
+      expect(rename.statusCode).toBe(200);
+      expect(rename.json().user.displayName).toBe('T7自改昵称');
+
+      // 改别人（PM）→ 403；改自己描述 → 403（描述仅超管）
+      const pmList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${pmToken}` },
+      });
+      const pm = (pmList.json() as { users: { id: string; email: string }[] }).users.find(
+        (u) => u.email === 'pm@a.test',
+      )!;
+      const patchOther = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${pm.id}`,
+        headers: { authorization: `Bearer ${keyUserToken}` },
+        payload: { displayName: '越权' },
+      });
+      expect(patchOther.statusCode).toBe(403);
+
+      const patchDesc = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${self.id}`,
+        headers: { authorization: `Bearer ${keyUserToken}` },
+        payload: { description: '越权描述' },
+      });
+      expect(patchDesc.statusCode).toBe(403);
+
+      // 重置自己密码 → 200（改密码后恢复原密码，避免影响后续用例）
+      const reset = await app.inject({
+        method: 'POST',
+        url: `/api/users/${self.id}/reset-password`,
+        headers: { authorization: `Bearer ${keyUserToken}` },
+        payload: { password: 'T7NewPass123' },
+      });
+      expect(reset.statusCode).toBe(200);
+      const relogin = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'key@a.test', password: 'T7NewPass123' },
+      });
+      expect(relogin.statusCode).toBe(200);
+      // 恢复原密码（后续用例假设 keyUserToken 密码 = password）+ 恢复原昵称
+      const restore = await app.inject({
+        method: 'POST',
+        url: `/api/users/${self.id}/reset-password`,
+        headers: { authorization: `Bearer ${keyUserToken}` },
+        payload: { password },
+      });
+      expect(restore.statusCode).toBe(200);
+      const renameBack = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${self.id}`,
+        headers: { authorization: `Bearer ${keyUserToken}` },
+        payload: { displayName: 'key' },
+      });
+      expect(renameBack.statusCode).toBe(200);
     });
 
     // T5：账号级停用/启用（spec-v1 US5——客户 PM 停用本公司普通用户）
@@ -1336,6 +1438,288 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       } finally {
         await owner.end();
       }
+    });
+
+    // T6：客户 PM 邀请本公司用户（spec-v1 US5 邀请半场——补齐 T4「邀请」缺口）
+    // 权限：仅 customer_pm（超管/内部/key_user/customer_user 403）；新账号 = 待激活 +
+    // user_tenants 归属本公司 + 邮箱绑定邀请链接（inviteKind=customer，错误邮箱设密 400）；
+    // 档位限 key_user/customer_user（customer_pm 档契约 400）；邮箱/昵称重复 409；
+    // 重发：本公司待激活 200 / 他司 404 / 本公司 fellow PM 403 / 已激活 409
+    describe('T6 客户 PM 邀请本公司用户', () => {
+      it('PM 邀请本公司普通用户：201 契约通过；待激活入本公司列表；链接绑定邮箱可激活', async () => {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { email: 't6user@a.test', role: 'customer_user' },
+        });
+        expect(res.statusCode).toBe(201);
+        const parsed = InviteUserResponseSchema.safeParse(res.json());
+        expect(parsed.success).toBe(true);
+        const { inviteUrl, expiresAt, user } = parsed.data!;
+        expect(inviteUrl).toContain('/invite?token=');
+        expect(user.role).toBe('customer_user');
+        expect(user.isActive).toBe(false);
+        expect(user.inviteKind).toBe('customer');
+        // 有效期 7 天（±半日容差）
+        const expiresIn = Date.parse(expiresAt) - Date.now();
+        expect(expiresIn).toBeGreaterThan(6.5 * 24 * 3600 * 1000);
+        expect(expiresIn).toBeLessThan(7.5 * 24 * 3600 * 1000);
+
+        // 新账号出现在 PM 的本公司列表（T4 租户过滤）
+        const list = await app.inject({
+          method: 'GET',
+          url: '/api/users',
+          headers: { authorization: `Bearer ${pmToken}` },
+        });
+        const inList = list
+          .json()
+          .users.find((u: { email: string }) => u.email === 't6user@a.test');
+        expect(inList).toBeTruthy();
+        expect(inList.role).toBe('customer_user');
+        expect(inList.isActive).toBe(false);
+
+        // 链接绑定邮箱：错误邮箱设密 400（防链接转发）；正确邮箱 200 → 登录 200
+        const token = new URL(inviteUrl).searchParams.get('token')!;
+        const wrongEmail = await app.inject({
+          method: 'POST',
+          url: '/api/auth/set-password',
+          payload: { token, password, email: 'other@a.test' },
+        });
+        expect(wrongEmail.statusCode).toBe(400);
+        const activate = await app.inject({
+          method: 'POST',
+          url: '/api/auth/set-password',
+          payload: { token, password, email: 't6user@a.test' },
+        });
+        expect(activate.statusCode).toBe(200);
+        const login = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { email: 't6user@a.test', password },
+        });
+        expect(login.statusCode).toBe(200);
+      });
+
+      it('PM 邀请 Key User 档：201 role=customer_key_user；customer_pm 档 → 400（契约拒绝）', async () => {
+        const keyRes = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { email: 't6key@a.test', role: 'customer_key_user', displayName: 'T6Key' },
+        });
+        expect(keyRes.statusCode).toBe(201);
+        const parsed = InviteUserResponseSchema.safeParse(keyRes.json());
+        expect(parsed.success).toBe(true);
+        expect(parsed.data!.user.role).toBe('customer_key_user');
+        expect(parsed.data!.user.displayName).toBe('T6Key');
+
+        const pmRole = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { email: 't6pm@a.test', role: 'customer_pm' },
+        });
+        expect(pmRole.statusCode).toBe(400);
+
+        const badRole = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { email: 't6bad@a.test', role: 'internal' },
+        });
+        expect(badRole.statusCode).toBe(400);
+      });
+
+      it('已注册邮箱 / 昵称重复 → 409（公司级邀请只建新账号）', async () => {
+        const dupEmail = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { email: 'key@a.test' }, // 已激活 key user
+        });
+        expect(dupEmail.statusCode).toBe(409);
+
+        const dupName = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { email: 't6dup@a.test', displayName: 'internal' }, // register 默认昵称
+        });
+        expect(dupName.statusCode).toBe(409);
+      });
+
+      it('权限：超管/internal/key_user/customer_user/未登录 → 403/401（仅 customer_pm）', async () => {
+        for (const [label, token] of [
+          ['sa', superAdminToken],
+          ['internal', internalToken],
+          ['key', keyUserToken],
+        ] as const) {
+          const res = await app.inject({
+            method: 'POST',
+            url: '/api/users/invite',
+            headers: { authorization: `Bearer ${token}` },
+            payload: { email: `t6-${label}@a.test` },
+          });
+          expect(res.statusCode).toBe(403);
+        }
+        // customer_user 档（t3cu 收尾已调回 customer_user）
+        const cuLogin = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { email: 't3cu@corp.test', password },
+        });
+        expect(cuLogin.statusCode).toBe(200);
+        const cuToken = (cuLogin.json() as { accessToken: string }).accessToken;
+        const cuRes = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${cuToken}` },
+          payload: { email: 't6cu@a.test' },
+        });
+        expect(cuRes.statusCode).toBe(403);
+
+        const anon = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          payload: { email: 't6anon@a.test' },
+        });
+        expect(anon.statusCode).toBe(401);
+      });
+
+      it('重发邀请：本公司待激活 200 新链接；已激活 409；他司待激活 404；本公司 fellow PM 403', async () => {
+        // 本公司待激活（先邀请不激活）
+        const invite = await app.inject({
+          method: 'POST',
+          url: '/api/users/invite',
+          headers: { authorization: `Bearer ${pmToken}` },
+          payload: { email: 't6resend@a.test', role: 'customer_user' },
+        });
+        expect(invite.statusCode).toBe(201);
+        const pendingId = (invite.json() as { user: { id: string } }).user.id;
+
+        // ① 本公司待激活 → 200 新链接（旧链接失效：新 token ≠ 旧 token）
+        const oldToken = new URL(
+          (invite.json() as { inviteUrl: string }).inviteUrl,
+        ).searchParams.get('token')!;
+        const resend = await app.inject({
+          method: 'POST',
+          url: `/api/users/${pendingId}/resend-invite`,
+          headers: { authorization: `Bearer ${pmToken}` },
+        });
+        expect(resend.statusCode).toBe(200);
+        const resendBody = ResendInviteResponseSchema.safeParse(resend.json());
+        expect(resendBody.success).toBe(true);
+        const newToken = new URL(resendBody.data!.inviteUrl).searchParams.get('token')!;
+        expect(newToken).not.toBe(oldToken);
+
+        // ② 已激活 → 409（t6user@a.test 已激活）
+        const activated = await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { email: 't6user@a.test', password },
+        });
+        expect(activated.statusCode).toBe(200);
+        const list = await app.inject({
+          method: 'GET',
+          url: '/api/users',
+          headers: { authorization: `Bearer ${pmToken}` },
+        });
+        const activatedUser = list
+          .json()
+          .users.find((u: { email: string }) => u.email === 't6user@a.test');
+        const resendActive = await app.inject({
+          method: 'POST',
+          url: `/api/users/${activatedUser.id}/resend-invite`,
+          headers: { authorization: `Bearer ${pmToken}` },
+        });
+        expect(resendActive.statusCode).toBe(409);
+
+        // ③ 他司待激活（客户C 创建时的待激活 PM 联系人）→ 404 不可见语义
+        const cList = await app.inject({
+          method: 'GET',
+          url: '/api/users',
+          headers: { authorization: `Bearer ${superAdminToken}` },
+        });
+        const contactC = cList
+          .json()
+          .users.find((u: { email: string }) => u.email === 'contact-c@rbac.test');
+        expect(contactC).toBeTruthy();
+        const resendOther = await app.inject({
+          method: 'POST',
+          url: `/api/users/${contactC.id}/resend-invite`,
+          headers: { authorization: `Bearer ${pmToken}` },
+        });
+        expect(resendOther.statusCode).toBe(404);
+
+        // ③' 他司已激活账号（客户 B 的 PM）→ 404（租户校验先行，防探测——
+        // 即使目标已激活也不泄露存在性与状态）
+        const resendOtherActive = await app.inject({
+          method: 'POST',
+          url: `/api/users/00000000-0000-4000-8000-000000000000/resend-invite`,
+          headers: { authorization: `Bearer ${pmToken}` },
+        });
+        expect(resendOtherActive.statusCode).toBe(404);
+        const bList = await app.inject({
+          method: 'GET',
+          url: '/api/users',
+          headers: { authorization: `Bearer ${superAdminToken}` },
+        });
+        const pmB = bList
+          .json()
+          .users.find((u: { email: string }) => u.email === 'pm-b@b.test');
+        expect(pmB).toBeTruthy();
+        const resendPmB = await app.inject({
+          method: 'POST',
+          url: `/api/users/${pmB.id}/resend-invite`,
+          headers: { authorization: `Bearer ${pmToken}` },
+        });
+        expect(resendPmB.statusCode).toBe(404);
+
+        // ④ 本公司 fellow PM 待激活 → 403（与 T5 停用语义一致：PM 不管理 PM）
+        const owner = connectOwner();
+        try {
+          const [fellow] = await owner`insert into users
+            (email, password_hash, display_name, role, is_active, invite_token_hash, invite_expires_at, invite_kind)
+            values ('t6fellow@a.test', 'x', 'T6Fellow', 'customer_pm', false,
+                    't6-fellow-hash', now() + interval '7 days', 'customer') returning id`;
+          await owner`insert into user_tenants (user_id, customer_id) values (${fellow.id}, ${cidA})`;
+          const resendFellow = await app.inject({
+            method: 'POST',
+            url: `/api/users/${fellow.id}/resend-invite`,
+            headers: { authorization: `Bearer ${pmToken}` },
+          });
+          expect(resendFellow.statusCode).toBe(403);
+          // 超管可重发任何客户账号（fellow PM 也放行）
+          const resendByAdmin = await app.inject({
+            method: 'POST',
+            url: `/api/users/${fellow.id}/resend-invite`,
+            headers: { authorization: `Bearer ${superAdminToken}` },
+          });
+          expect(resendByAdmin.statusCode).toBe(200);
+        } finally {
+          await owner.end();
+        }
+      });
+
+      it('邀请落审计 user.invite（companyInvite 标记，actor=customer_pm）', async () => {
+        const owner = connectOwner();
+        try {
+          const rows = await owner`
+            select action, actor_user_id, actor_role, resource_type, resource_id, metadata
+            from audit_logs where action = 'user.invite' and metadata::text like '%companyInvite%'
+            order by created_at desc limit 3`;
+          expect(rows.length).toBeGreaterThan(0);
+          const first = rows[0];
+          expect(first.actor_role).toBe('customer_pm');
+          expect(first.resource_type).toBe('user');
+          expect(first.resource_id).toBeTruthy();
+          const meta = JSON.parse(first.metadata as string) as Record<string, unknown>;
+          expect(meta.companyInvite).toBe(true);
+        } finally {
+          await owner.end();
+        }
+      });
     });
 
     // #39：安全页签后端 —— 重置密码（POST /api/users/:id/reset-password）

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CreateUserResponseSchema,
   CustomerCreateResponseSchema,
+  InviteUserResponseSchema,
   ResendInviteResponseSchema,
   ResetUserPasswordResponseSchema,
   UpdateUserResponseSchema,
@@ -11,6 +12,7 @@ import {
   UsersListResponseSchema,
   type CreateUserResponse,
   type CustomerCreateResponse,
+  type InviteUserResponse,
   type ResendInviteResponse,
   type UpdateUserResponse,
   type UserAdmin,
@@ -18,13 +20,18 @@ import {
 } from '@monitor/contracts';
 import { apiFetch, errorMessage } from '../../lib/api';
 import { useAuth } from '../../components/auth-provider';
-import { isCustomerRole, userRoleLabel } from '../../lib/roles';
+import {
+  INVITE_ROLES,
+  inviteRoleLabel,
+  isCustomerRole,
+  userRoleLabel,
+} from '../../lib/roles';
 import { CUSTOMER_ROLES, INTERNAL_ROLES, type UserRole } from '@monitor/shared';
 
 /**
- * 用户管理（T4 对公司开放：内部/超管看全部平台账号；客户 PM 看本公司账号——
- * 后端按租户过滤，前端各操作区以 isSuperAdmin 守卫保持超管专属；
- * T5 停用/启用：超管任意 + 客户 PM 本公司账号，自己不可操作）。
+ * 用户管理（T4/#53 对公司开放：内部/超管看全部平台账号；所有客户角色看本公司全部账号——
+ * 后端按租户过滤；公司花名册只读：普通客户用户可改自己昵称/密码，其余操作区按角色
+ * 守卫隐藏/禁用——邀请/停用/启用仅超管或客户 PM）。
  * 布局：左侧平台账号列表（点击选中）→ 右侧 header 区（用户名 bnCurrentKey 风格 +
  * 描述 maxlength 35 + 保存）+ 页签条（通用/角色/用户权限，通用默认 active）。
  * 最小字段集：只呈现平台已有字段（邮箱/显示名/角色/状态/描述），不引入
@@ -85,6 +92,19 @@ export default function UsersPage() {
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusError, setStatusError] = useState('');
   const [statusOk, setStatusOk] = useState('');
+
+  // 邀请本公司用户（T6，spec-v1 US5 邀请半场）：客户 PM 专属入口——建待激活账号 +
+  // 邮箱绑定邀请链接（7 天有效），弹窗展示供复制分发
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    email: '',
+    displayName: '',
+    role: 'customer_user',
+  });
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteResult, setInviteResult] = useState<InviteUserResponse | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   // 管理操作（建内部用户/建客户，超管专属，US-3）
   const [creating, setCreating] = useState(false);
@@ -159,6 +179,9 @@ export default function UsersPage() {
   }, [selectedUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isSuperAdmin = user?.role === 'super_admin';
+
+  // 邀请本公司用户（T6）：仅客户 PM（后端 @Roles 兜底）；超管邀客户用户需公司选择器，后续票
+  const isCustomerPm = user?.role === 'customer_pm';
 
   // 停用/启用权限（T5）：超管任何账号 / 客户 PM 本公司账号（列表已过滤）；自己不可停
   const canManageStatus =
@@ -382,6 +405,49 @@ export default function UsersPage() {
     }
   }
 
+  /**
+   * 邀请本公司用户（T6）：客户 PM 专属——建待激活账号（Key User/普通用户），
+   * 返回邮箱绑定邀请链接（7 天有效）供复制分发；成功后刷新列表（新账号入组）。
+   */
+  async function handleInviteUser(e: React.FormEvent) {
+    e.preventDefault();
+    setInviteError('');
+    setInviting(true);
+    try {
+      const res = await apiFetch('/api/users/invite', {
+        method: 'POST',
+        body: {
+          email: inviteForm.email,
+          ...(inviteForm.displayName.trim()
+            ? { displayName: inviteForm.displayName.trim() }
+            : {}),
+          role: inviteForm.role,
+        },
+        schema: InviteUserResponseSchema,
+      });
+      setInviteResult(res);
+      setInviteCopied(false);
+      const fresh = await apiFetch('/api/users', { schema: UsersListResponseSchema });
+      setData(fresh);
+    } catch (err) {
+      setInviteError(errorMessage(err));
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  /** 复制邀请链接（T6）：成功图标切对勾，1.6s 复位（与 #51 同模式） */
+  async function handleInviteCopy() {
+    if (!inviteResult) return;
+    try {
+      await navigator.clipboard.writeText(inviteResult.inviteUrl);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1600);
+    } catch {
+      // 剪贴板不可用（非 HTTPS 等）：静默失败，链接可手动选中复制
+    }
+  }
+
   /** 重发客户邀请（grilling）：重新生成 token——旧链接立即失效，有效期刷新 7 天 */
   async function handleResend() {
     if (!selectedUser) return;
@@ -423,6 +489,16 @@ export default function UsersPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [inviteModal]);
 
+  // Esc 关闭邀请弹窗（T6）：与 #51 弹窗同模式
+  useEffect(() => {
+    if (!inviteOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInviteOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [inviteOpen]);
+
   // 输入框样式走 CSS 类 .up-input（原版 dx-editor-filled：浅灰填充底 +
   // 细边框，hover/focus 变主色，见 globals.css .users-page 块）
   return (
@@ -434,8 +510,27 @@ export default function UsersPage() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         {/* 左侧列表：面板（1px 边框 + 4px 圆角）+ 选中 = 3px 主色竖条 + 网格选中蓝 */}
         <aside className="up-panel" style={{ width: 260, flexShrink: 0 }}>
-          <div className="up-panel-header">
-            平台账号（{data?.users.length ?? 0}）
+          <div
+            className="up-panel-header"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+          >
+            <span>平台账号（{data?.users.length ?? 0}）</span>
+            {/* 邀请本公司用户（T6）：仅客户 PM——打开邀请弹窗（生成邮箱绑定邀请链接） */}
+            {isCustomerPm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setInviteOpen(true);
+                  setInviteResult(null);
+                  setInviteError('');
+                }}
+                className="up-invite-btn"
+                title="邀请本公司用户（Key User/普通用户）"
+              >
+                <i className="fa-solid fa-user-plus" aria-hidden="true" />
+                邀请
+              </button>
+            )}
           </div>
           {/* 昵称搜索（#37 迭代）：按 displayName 实时过滤列表；
              透明底 + 底边线（聚焦变主色），与侧边菜单 search-form 同构 */}
@@ -572,8 +667,9 @@ export default function UsersPage() {
               </form>
 
               {/* 邀请链接重发（grilling：客户丢失链接 → 重新生成 + 复制）。
-                  仅超管可见；重发语义 = 旧链接立即失效、有效期刷新 7 天 */}
-              {isSuperAdmin &&
+                  超管任何客户账号；客户 PM 本公司账号（T6，后端租户校验 404/403 兜底）。
+                  重发语义 = 旧链接立即失效、有效期刷新 7 天 */}
+              {(isSuperAdmin || isCustomerPm) &&
                 isCustomerRole(selectedUser.role) &&
                 !selectedUser.isActive &&
                 selectedUser.inviteKind === 'customer' && (
@@ -588,8 +684,8 @@ export default function UsersPage() {
                         lineHeight: 1.6,
                       }}
                     >
-                      该客户联系人尚未激活账号。邀请链接 7 天内有效，绑定{' '}
-                      {selectedUser.email}。客户丢失链接时可重新生成——
+                      该客户账号尚未激活。邀请链接 7 天内有效，绑定{' '}
+                      {selectedUser.email}。对方丢失链接时可重新生成——
                       旧链接立即失效，有效期重新计算。
                     </p>
                     {!resend ? (
@@ -1092,6 +1188,134 @@ export default function UsersPage() {
                   />
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 邀请本公司用户弹窗（T6）：客户 PM 专属——生成邮箱绑定邀请链接（7 天有效），
+          复制分发；成功后展示链接 + 复制按钮，关闭方式同 #51 弹窗 */}
+      {inviteOpen && (
+        <div className="up-modal-backdrop" onClick={() => setInviteOpen(false)}>
+          <div
+            className="up-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="邀请本公司用户"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="up-modal-header">
+              <div className="up-modal-title">邀请本公司用户</div>
+              <button
+                type="button"
+                className="icon-button-action"
+                onClick={() => setInviteOpen(false)}
+                aria-label="关闭"
+              >
+                <i className="fa-solid fa-xmark fs-3 color-primary" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="up-modal-body">
+              {!inviteResult ? (
+                <form onSubmit={handleInviteUser}>
+                  <div style={{ fontSize: 12, color: 'var(--mwc-text-light)', lineHeight: 1.6 }}>
+                    新账号需通过邀请链接设置密码激活（链接 7 天内有效、绑定邮箱，
+                    仅该邮箱可激活）。生成后请复制链接发给对方。
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    placeholder="对方邮箱（必填）"
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    className="up-input"
+                    style={{ width: '100%', marginTop: 12 }}
+                  />
+                  <input
+                    placeholder="昵称（可选，平台唯一）"
+                    value={inviteForm.displayName}
+                    onChange={(e) =>
+                      setInviteForm({ ...inviteForm, displayName: e.target.value })
+                    }
+                    className="up-input"
+                    style={{ width: '100%', marginTop: 8 }}
+                  />
+                  <select
+                    value={inviteForm.role}
+                    onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                    className="up-input"
+                    style={{ width: '100%', marginTop: 8 }}
+                    aria-label="角色"
+                  >
+                    {INVITE_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {inviteRoleLabel(r)}
+                      </option>
+                    ))}
+                  </select>
+                  {inviteError && <p className="up-error" style={{ marginTop: 8 }}>{inviteError}</p>}
+                  <button
+                    type="submit"
+                    disabled={inviting || !inviteForm.email}
+                    className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                    style={{ marginTop: 12 }}
+                  >
+                    <span className="dx-button-text">
+                      {inviting ? '生成中…' : '生成邀请链接'}
+                    </span>
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--mwc-text-light)' }}>被邀请人</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--mwc-text)' }}>
+                    {inviteResult.user.displayName}（{inviteResult.user.email} ·{' '}
+                    {userRoleLabel(inviteResult.user.role)}）
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--mwc-text-light)',
+                      marginTop: 14,
+                      marginBottom: 6,
+                    }}
+                  >
+                    邀请链接（7 天内有效，绑定 {inviteResult.user.email}，仅该邮箱可激活）
+                  </div>
+                  <div className="up-invite-row">
+                    <input
+                      readOnly
+                      value={inviteResult.inviteUrl}
+                      className="up-input"
+                      aria-label="邀请链接"
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <button
+                      type="button"
+                      className="icon-button-action"
+                      aria-label={inviteCopied ? '已复制' : '复制链接'}
+                      title="复制链接"
+                      onClick={handleInviteCopy}
+                    >
+                      <i
+                        className={`fa-solid ${inviteCopied ? 'fa-check' : 'fa-copy'} fs-3 ${inviteCopied ? 'color-success-strong' : 'color-primary'}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--mwc-text-light)', marginTop: 6 }}>
+                    有效期至 {new Date(inviteResult.expiresAt).toLocaleString()}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInviteOpen(false)}
+                    className="dx-button dx-button-mode-text dx-button-normal default mwc-defined-width dx-button-has-text"
+                    style={{ marginTop: 12 }}
+                  >
+                    <span className="dx-button-text">完成</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

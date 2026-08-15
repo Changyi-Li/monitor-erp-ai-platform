@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   CreateUserRequestSchema,
   CreateUserResponseSchema,
+  InviteUserRequestSchema,
+  InviteUserResponseSchema,
   ResendInviteResponseSchema,
   ResetUserPasswordRequestSchema,
   ResetUserPasswordResponseSchema,
@@ -13,6 +15,8 @@ import {
   UsersListResponseSchema,
   type CreateUserRequest,
   type CreateUserResponse,
+  type InviteUserRequest,
+  type InviteUserResponse,
   type ResendInviteResponse,
   type ResetUserPasswordRequest,
   type ResetUserPasswordResponse,
@@ -33,9 +37,10 @@ import { AuthService } from './auth.service';
 const uuidParam = new ZodValidationPipe(z.uuid());
 
 /**
- * 平台用户管理。T4 对公司开放：类级默认内部/超管，各方法按语义覆盖——
- * 列表（GET）customer_pm 可见本公司账号；建号/重发邀请仍仅超管；
- * 更新（昵称本人可改）、重置密码（自己）所有登录角色可进，字段级权限在 service 层判定。
+ * 平台用户管理。T4/#53 对公司开放：类级默认内部/超管，各方法按语义覆盖——
+ * 列表（GET）所有客户角色可见本公司全部账号（只读花名册）；
+ * 建号/邀请仍限超管/customer_pm；更新（昵称本人可改）、重置密码（自己）所有登录角色
+ * 可进，字段级权限在 service 层判定。
  */
 @Roles('super_admin', 'internal')
 @Controller('users')
@@ -53,13 +58,30 @@ export class UsersController {
     return this.auth.createUser(body, actor);
   }
 
-  // T4：用户管理页对公司开放——方法级 @Roles 覆盖类级，customer_pm 可见（本公司账号，
-  // service 层按租户过滤）；customer_key_user/customer_user 仍拒绝
+  // T4/#53：用户管理页对公司开放——方法级 @Roles 覆盖类级：所有客户角色
+  // 可见本公司全部账号（service 层按租户过滤；公司花名册只读，管理操作仍按角色收着）
   @Get()
-  @Roles('super_admin', 'internal', 'customer_pm')
+  @Roles('super_admin', 'internal', 'customer_pm', 'customer_key_user', 'customer_user')
   @ZodResponse(UsersListResponseSchema)
   listUsers(@CurrentUser() actor: AuthUser): Promise<UsersListResponse> {
     return this.auth.listUsers(actor);
+  }
+
+  /**
+   * 客户 PM 邀请本公司用户（T6，spec-v1 US5 邀请半场）：方法级 @Roles 覆盖类级——
+   * 仅 customer_pm（RolesGuard 对 super_admin 全放行，service 层显式拒绝——
+   * 超管邀客户用户需目标公司选择器，留待后续票）；service 层按租户归属本公司，
+   * 档位限 customer_key_user/customer_user（契约层限定，customer_pm 档由建客户/超管产生）。
+   * 响应含邀请链接（7 天有效、绑定邮箱）供复制分发。
+   */
+  @Post('invite')
+  @Roles('customer_pm')
+  @ZodResponse(InviteUserResponseSchema)
+  inviteUser(
+    @Body(new ZodValidationPipe(InviteUserRequestSchema)) body: InviteUserRequest,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<InviteUserResponse> {
+    return this.auth.inviteCompanyUser(body, actor);
   }
 
   /**
@@ -96,12 +118,14 @@ export class UsersController {
   }
 
   /**
-   * 重发客户邀请（grilling：未激活客户链接再发放）：仅超管。
-   * 重新生成 token——旧链接立即失效，有效期刷新 7 天；已激活/非客户邀请账号 → 409。
+   * 重发客户邀请（grilling：未激活客户链接再发放）：超管任何客户账号；
+   * customer_pm 本公司账号（T6：service 层租户校验，他司 404；不能重发本公司
+   * 其他 PM 的邀请 403，与 T5 停用语义一致）。重新生成 token——旧链接立即
+   * 失效，有效期刷新 7 天；已激活/非客户邀请账号 → 409。
    */
   @Post(':id/resend-invite')
   @HttpCode(200)
-  @Roles('super_admin')
+  @Roles('super_admin', 'customer_pm')
   @ZodResponse(ResendInviteResponseSchema)
   resendInvite(
     @Param('id', uuidParam) id: string,

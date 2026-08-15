@@ -1077,6 +1077,25 @@ body.monitor-dark-contrast .monitor-side-menu .sub-menu-container .menu-empty {
   border-bottom: 1px solid var(--mwc-border);
   background: var(--mwc-lighter);
 }
+/* 邀请本公司用户（T6）：面板头右侧小按钮——主色描边文字按钮，hover 主色底 */
+.users-page .up-invite-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--mwc-primary);
+  border: 1px solid var(--mwc-primary-dim);
+  border-radius: var(--mwc-border-radius-small);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.users-page .up-invite-btn:hover {
+  background: var(--mwc-primary);
+  color: #fff;
+}
 .users-page .up-search-wrap {
   padding: 8px 10px;
   border-bottom: 1px solid var(--mwc-border);

@@ -20,8 +20,6 @@ import {
 
 /** 平台角色专属入口（非平台角色隐藏；与侧边菜单同一过滤规则，供搜索下拉复用） */
 const PLATFORM_HREFS = new Set(['/agent', '/usage']);
-/** T4：客户 PM 专属入口（用户管理页对公司开放——customer_pm 可见本公司账号） */
-const CUSTOMER_PM_HREFS = new Set(['/users']);
 
 function filterCategories(
   categories: MonitorMenuCategory[],
@@ -36,10 +34,13 @@ function filterCategories(
     .filter((cat) => cat.items.length > 0);
 }
 
-/** 客户侧菜单可见性：平台入口一律隐藏；客户 PM 专属入口仅 customer_pm 可见 */
+/**
+ * 客户侧菜单可见性：平台入口一律隐藏；其余对全部客户角色可见——
+ * /users 用户页对所有客户角色开放（#53：公司花名册只读——普通客户用户
+ * 可查看本公司全部账号、改自己昵称/密码；管理操作仍按角色守卫）。
+ */
 function isItemVisible(item: MonitorMenuItem, role: UserRole | undefined): boolean {
-  if (PLATFORM_HREFS.has(item.href)) return false;
-  return CUSTOMER_PM_HREFS.has(item.href) ? role === 'customer_pm' : true;
+  return !PLATFORM_HREFS.has(item.href);
 }
 
 /**

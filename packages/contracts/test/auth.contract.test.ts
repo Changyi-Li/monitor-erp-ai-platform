@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ErrorResponseSchema,
+  InviteUserRequestSchema,
+  InviteUserResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   LogoutRequestSchema,
@@ -10,8 +12,10 @@ import {
   RefreshResponseSchema,
   RegisterRequestSchema,
   RegisterResponseSchema,
+  UserAdminSchema,
   UserSchema,
   type User,
+  type UserAdmin,
 } from '../src';
 
 const validUuid = 'b1a2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
@@ -145,5 +149,73 @@ describe('auth 契约：错误响应对齐 Nest 异常体', () => {
       ErrorResponseSchema.safeParse({ statusCode: 400, message: ['邮箱格式不正确'], error: 'Bad Request' }).success,
     ).toBe(true);
     expect(ErrorResponseSchema.safeParse({ message: '缺 statusCode' }).success).toBe(false);
+  });
+});
+
+describe('auth 契约：客户 PM 邀请本公司用户（T6）', () => {
+  const validAdminUser: UserAdmin = {
+    ...validUser,
+    isActive: false,
+    inviteKind: 'customer',
+  };
+
+  it('接受合法邀请请求（role 缺省 → customer_user）', () => {
+    const result = InviteUserRequestSchema.safeParse({ email: 'bob@example.com' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.role).toBe('customer_user');
+    }
+    expect(
+      InviteUserRequestSchema.safeParse({
+        email: 'bob@example.com',
+        displayName: '  Bob  ',
+        role: 'customer_key_user',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('拒绝非法邮箱 / 超长昵称 / customer_pm 与内部档位', () => {
+    expect(InviteUserRequestSchema.safeParse({ email: 'nope' }).success).toBe(false);
+    expect(
+      InviteUserRequestSchema.safeParse({ email: 'bob@example.com', displayName: 'x'.repeat(65) }).success,
+    ).toBe(false);
+    // PM 档只能由建客户/超管产生（T3），内部档位同理拒绝
+    expect(
+      InviteUserRequestSchema.safeParse({ email: 'bob@example.com', role: 'customer_pm' }).success,
+    ).toBe(false);
+    expect(
+      InviteUserRequestSchema.safeParse({ email: 'bob@example.com', role: 'internal' }).success,
+    ).toBe(false);
+    expect(
+      InviteUserRequestSchema.safeParse({ email: 'bob@example.com', role: 'customer' }).success,
+    ).toBe(false);
+  });
+
+  it('邀请响应 = 链接 + 过期时间 + 管理列表项（UserAdminSchema 同构）', () => {
+    const result = InviteUserResponseSchema.safeParse({
+      inviteUrl: 'http://localhost:3000/invite?token=abc',
+      expiresAt: validIsoDate,
+      user: validAdminUser,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.user).toMatchObject({
+        email: 'alice@example.com',
+        isActive: false,
+        inviteKind: 'customer',
+      });
+    }
+    expect(
+      InviteUserResponseSchema.safeParse({
+        inviteUrl: 'not-a-url',
+        expiresAt: validIsoDate,
+        user: validAdminUser,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('UserAdminSchema 接受 isActive + inviteKind（管理列表项）', () => {
+    expect(UserAdminSchema.safeParse(validAdminUser).success).toBe(true);
+    expect(UserAdminSchema.safeParse({ ...validAdminUser, inviteKind: 'project' }).success).toBe(false);
   });
 });
