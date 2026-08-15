@@ -1242,6 +1242,10 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(off.statusCode).toBe(200);
       expect(UpdateUserStatusResponseSchema.safeParse(off.json()).success).toBe(true);
       expect((off.json() as { user: { isActive: boolean } }).user.isActive).toBe(false);
+      // 已激活账号无邀请 token：invitePending 恒 false（「已停用」而非「未激活」）
+      expect(
+        (off.json() as { user: { invitePending: boolean } }).user.invitePending,
+      ).toBe(false);
 
       // 停用后：登录 401（统一文案）+ 轮换式刷新 401（会话立即不可续）
       const loginDenied = await app.inject({
@@ -1464,6 +1468,9 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         .users.find((u: { email: string }) => u.email === 't5pending@a.test');
       expect(pending).toBeTruthy();
       expect(pending.isActive).toBe(false);
+      // 项目成员邀请账号（inviteKind=null）同样持有 token → invitePending=true
+      // （UI 据此显示「未激活」而非「已停用」）
+      expect(pending.invitePending).toBe(true);
 
       // 超管 / 客户 PM（本公司账号）启用 → 400（没有「启用」一说，应走邀请链接）
       const enable = await app.inject({
@@ -1553,6 +1560,8 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         expect(user.role).toBe('customer_user');
         expect(user.isActive).toBe(false);
         expect(user.inviteKind).toBe('customer');
+        // 待激活判据：持有未消耗邀请 token
+        expect(user.invitePending).toBe(true);
         // 有效期 7 天（±半日容差）
         const expiresIn = Date.parse(expiresAt) - Date.now();
         expect(expiresIn).toBeGreaterThan(6.5 * 24 * 3600 * 1000);

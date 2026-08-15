@@ -761,13 +761,15 @@ function toUserDto(row: UserRow): User {
   };
 }
 
-/** DB 行 → 管理列表项（契约 UserAdmin）：User + 账号状态 + 邀请类型 + 所属客户（#54）。
- * 客户信息由调用方联查传入（listUsers 两分支 / loadCustomer）；无归属 = null。 */
+/** DB 行 → 管理列表项（契约 UserAdmin）：User + 账号状态 + 邀请类型 + 邀请待激活标记
+ * + 所属客户（#54）。客户信息由调用方联查传入（listUsers 两分支 / loadCustomer）；
+ * 无归属 = null。invitePending = 持有未消耗邀请 token（未激活 vs 已停用判据）。 */
 function toListItem(row: UserRow, customer: CustomerRow | null = null): UserAdmin {
   return {
     ...toUserDto(row),
     isActive: row.isActive,
     inviteKind: row.inviteKind as 'customer' | null,
+    invitePending: row.inviteTokenHash !== null,
     customerId: customer?.id ?? null,
     customerName: customer?.name ?? null,
   };

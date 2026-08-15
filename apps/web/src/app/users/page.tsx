@@ -796,13 +796,48 @@ export default function UsersPage() {
                         }}
                       >
                         {/* 账号状态（T5）：超管 / 客户 PM 可停用/启用（本公司账号）。
-                            停用确认弹窗；自己显示说明不可操作 */}
+                            停用确认弹窗；自己显示说明不可操作。
+                            状态徽标（invitePending 区分「未激活」与「已停用」）在操作前 */}
                         <div style={{ gridColumn: '1 / -1' }}>
                           <div className="up-label" style={{ marginTop: 8 }}>
                             账号状态
                           </div>
-                          {canManageStatus ? (
-                            <div className="up-form-row" style={{ marginTop: 4 }}>
+                          <div
+                            className="up-form-row"
+                            style={{ marginTop: 4, alignItems: 'center' }}
+                          >
+                            {(() => {
+                              const badge = selectedUser.isActive
+                                ? { text: '正常', color: 'var(--mwc-success)' }
+                                : selectedUser.invitePending
+                                  ? { text: '未激活', color: 'var(--mwc-warning)' }
+                                  : { text: '已停用', color: 'var(--mwc-critical-strong)' };
+                              return (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    color: badge.color,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: '50%',
+                                      background: badge.color,
+                                      flexShrink: 0,
+                                    }}
+                                    aria-hidden="true"
+                                  />
+                                  {badge.text}
+                                </span>
+                              );
+                            })()}
+                            {canManageStatus ? (
                               <button
                                 type="button"
                                 onClick={handleToggleStatus}
@@ -817,18 +852,18 @@ export default function UsersPage() {
                                       : '启用账号'}
                                 </span>
                               </button>
-                              {statusOk && <span className="up-success">{statusOk}</span>}
-                              {statusError && <span className="up-error">{statusError}</span>}
-                            </div>
-                          ) : selectedUser.id === user?.id ? (
-                            <div style={{ fontSize: 13, color: 'var(--mwc-text-light)' }}>
-                              不能停用或启用自己的账号
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: 13, color: 'var(--mwc-text-light)' }}>
-                              仅超管或客户项目经理可操作
-                            </div>
-                          )}
+                            ) : selectedUser.id === user?.id ? (
+                              <span style={{ fontSize: 13, color: 'var(--mwc-text-light)' }}>
+                                不能停用或启用自己的账号
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 13, color: 'var(--mwc-text-light)' }}>
+                                仅超管或客户项目经理可操作
+                              </span>
+                            )}
+                            {statusOk && <span className="up-success">{statusOk}</span>}
+                            {statusError && <span className="up-error">{statusError}</span>}
+                          </div>
                         </div>
                         <Field label="邮箱" value={selectedUser.email} />
                         {/* 昵称编辑（grilling）：本人或超管可改；保存 PATCH displayName，

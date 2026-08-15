@@ -157,6 +157,8 @@ describe('auth 契约：客户 PM 邀请本公司用户（T6）', () => {
     ...validUser,
     isActive: false,
     inviteKind: 'customer',
+    // 待激活判据：持有未消耗邀请 token
+    invitePending: true,
     // #54：所属客户（客户角色必带；内部/超管 = null）
     customerId: validUuid,
     customerName: 'mesongroup',
@@ -228,5 +230,15 @@ describe('auth 契约：客户 PM 邀请本公司用户（T6）', () => {
     expect(
       UserAdminSchema.safeParse({ ...validAdminUser, customerId: 'not-a-uuid' }).success,
     ).toBe(false);
+    // invitePending：必填布尔（停用后的激活账号 = false；内部账号 = false）
+    expect(UserAdminSchema.safeParse({ ...validAdminUser, invitePending: false }).success).toBe(
+      true,
+    );
+    expect(
+      UserAdminSchema.safeParse({ ...validAdminUser, invitePending: 'yes' }).success,
+    ).toBe(false);
+    expect(UserAdminSchema.safeParse({ ...validAdminUser, invitePending: undefined }).success).toBe(
+      false,
+    );
   });
 });
