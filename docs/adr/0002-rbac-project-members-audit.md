@@ -42,8 +42,12 @@ PM 停用只翻 `project_members.is_active`（用户可能在其他项目 active
 
 ## 修订：T6 公司级邀请（spec-v1 US5 邀请半场）
 
-客户 PM 除项目内成员邀请外，可在用户管理页邀请**本公司**新用户：`POST /api/users/invite`（仅 customer_pm；RolesGuard 对 super_admin 全放行故 service 显式 403——超管邀客户用户需目标公司选择器，契约无 customerId 字段，留待后续票）。新账号 = 待激活占位 + `inviteKind='customer'` 邮箱绑定链接（/invite 页需输入被邀请邮箱才能激活，防转发）+ `user_tenants` 归属本公司；档位限 `customer_key_user|customer_user`（契约层限定，PM 档由建客户/超管产生）；已注册邮箱/昵称重复 → 409（只建新账号，加项目走成员流程）。重发（`POST /users/:id/resend-invite`）由超管专属放开为超管任意 + customer_pm 本公司（他司 404 不可见语义、fellow PM 403，与 T5 停用一致）。审计 `user.invite`（`companyInvite: true` 标记）。
+客户 PM 除项目内成员邀请外，可在用户管理页邀请**本公司**新用户：`POST /api/users/invite`（仅 customer_pm；RolesGuard 对 super_admin 全放行故 service 显式 403——超管邀客户用户需目标公司选择器，邀请契约 `InviteUserRequestSchema` 无 customerId 字段，留待后续票）。新账号 = 待激活占位 + `inviteKind='customer'` 邮箱绑定链接（/invite 页需输入被邀请邮箱才能激活，防转发）+ `user_tenants` 归属本公司；档位限 `customer_key_user|customer_user`（契约层限定，PM 档由建客户/超管产生）；已注册邮箱/昵称重复 → 409（只建新账号，加项目走成员流程）。重发（`POST /users/:id/resend-invite`）由超管专属放开为超管任意 + customer_pm 本公司（他司 404 不可见语义、fellow PM 403，与 T5 停用一致）。审计 `user.invite`（`companyInvite: true` 标记）。
 
 ## 修订：T7/#53 用户页对公司全员开放（公司花名册只读）
 
 `GET /api/users` 放开到全部客户角色：**所有客户角色（customer_pm / customer_key_user / customer_user）可见本公司全部账号**（T4 租户过滤；#53 将初版 T7「普通用户仅自己」自视图调整为公司花名册——Key User/普通用户也需看到本公司 PM 等同事，列表只读）。侧边菜单 `/users` 入口对所有客户角色可见。写操作边界不变：改别人/改描述/改角色仅超管（服务层 403），停用/启用、邀请、重发仅超管或 customer_pm；普通客户用户可改自己昵称、重置自己密码。
+
+## 修订：#54 用户列表项带所属客户
+
+`UserAdmin` 契约新增可空 `customerId`/`customerName`（内部/超管账号 = null）：列表接口客户分支 innerJoin 本租户 `customers` 取客户名（RLS 保证不跨租户），内部/超管分支按 `user_tenants.created_at` 最早一条归属做相关子查询 join（与 `loadCustomer` 取首条语义一致，tie-break 唯一；不用 distinctOn 以免破坏列表 createdAt 顺序）。update/status/invite/create 响应统一走 `toListItem(row, customer)`。用户管理页「通用」页签新增只读「所属客户」字段。

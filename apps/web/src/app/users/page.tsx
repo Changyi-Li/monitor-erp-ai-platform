@@ -881,6 +881,9 @@ export default function UsersPage() {
                         </div>
                         <Field label="角色" value={userRoleLabel(selectedUser.role)} />
                         <Field label="状态" value={selectedUser.isActive ? '正常' : '未激活/已停用'} />
+                        {/* 所属客户（#54）：客户角色显示所属客户名（user_tenants + customers）；
+                            内部/超管账号无归属 → — */}
+                        <Field label="所属客户" value={selectedUser.customerName ?? '—'} />
                         <Field
                           label="创建时间"
                           value={new Date(selectedUser.createdAt).toLocaleString()}

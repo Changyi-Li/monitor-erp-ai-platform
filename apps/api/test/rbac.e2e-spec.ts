@@ -1016,6 +1016,33 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
       expect(keyEmails).not.toContain('admin@corp.test');
       expect(keyEmails).not.toContain('pm-b@b.test');
 
+      // #54：客户列表项带所属客户（cidA = 客户A）；内部/超管列表里客户账号同样带，
+      // 平台账号为 null
+      const pmRows = pmList.json() as {
+        users: { email: string; customerId: string | null; customerName: string | null }[];
+      };
+      const pmRow = pmRows.users.find((u) => u.email === 'pm@a.test')!;
+      expect(pmRow.customerId).toBe(cidA);
+      expect(pmRow.customerName).toBe('客户A');
+      const keyRow = (keyList.json() as typeof pmRows).users.find(
+        (u) => u.email === 'key@a.test',
+      )!;
+      expect(keyRow.customerId).toBe(cidA);
+      expect(keyRow.customerName).toBe('客户A');
+      // 内部/超管列表：客户账号带客户名，平台账号为 null
+      const internalList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${internalToken}` },
+      });
+      const internalRows = internalList.json() as typeof pmRows;
+      expect(
+        internalRows.users.find((u) => u.email === 'admin@corp.test')!.customerName,
+      ).toBeNull();
+      expect(
+        internalRows.users.find((u) => u.email === 'pm@a.test')!.customerName,
+      ).toBe('客户A');
+
       // #53：customer_user → 200（T3 用例收尾已把 t3cu 调回 customer_user 且清理了
       // 租户行——重新登录取最新角色；无租户 → 空列表，但不泄露任何平台/他司账号）
       const cuLogin = await app.inject({
@@ -1113,6 +1140,71 @@ describe('RBAC e2e：权限矩阵、邀请设密与项目边界', () => {
         payload: { displayName: 'key' },
       });
       expect(renameBack.statusCode).toBe(200);
+    });
+
+    // #54：多归属用户——列表单行无重复；超管视角取最早归属（created_at）；
+    // 客户 PM 视角取本租户归属（PATCH/status 响应与列表一致）
+    it('#54 多租户归属：列表单行；超管取最早归属；客户 PM 取本租户归属', async () => {
+      const owner = connectOwner();
+      try {
+        const [multi] = await owner`insert into users (email, password_hash, display_name, role, is_active)
+          values ('multi@a.test', 'x', 'Multi', 'customer_user', true) returning id`;
+        // 先插 cidB（更早）再插 cidA（更晚）——超管视角应取最早（客户B）
+        await owner`insert into user_tenants (user_id, customer_id) values (${multi.id}, ${cidB})`;
+        await owner`insert into user_tenants (user_id, customer_id) values (${multi.id}, ${cidA})`;
+      } finally {
+        await owner.end();
+      }
+
+      // 超管列表：单行（join 不产生重复）+ 最早归属 = 客户B
+      const adminList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${superAdminToken}` },
+      });
+      const adminRows = (
+        adminList.json() as { users: { email: string; customerName: string | null }[] }
+      ).users.filter((u) => u.email === 'multi@a.test');
+      expect(adminRows).toHaveLength(1);
+      expect(adminRows[0].customerName).toBe('客户B');
+
+      // 客户 PM（cidA）列表：本租户归属 = 客户A（即使它是更晚的归属）
+      const pmList = await app.inject({
+        method: 'GET',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${pmToken}` },
+      });
+      const pmMulti = (
+        pmList.json() as { users: { id: string; email: string; customerName: string | null }[] }
+      ).users.find((u) => u.email === 'multi@a.test')!;
+      expect(pmMulti.customerName).toBe('客户A');
+
+      // PATCH status 响应与列表一致（loadCustomer 租户限定，不回落他司最早归属）
+      const off = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${pmMulti.id}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: false },
+      });
+      expect(off.statusCode).toBe(200);
+      expect(
+        (off.json() as { user: { customerName: string | null } }).user.customerName,
+      ).toBe('客户A');
+      const on = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/${pmMulti.id}/status`,
+        headers: { authorization: `Bearer ${pmToken}` },
+        payload: { isActive: true },
+      });
+      expect(on.statusCode).toBe(200);
+
+      // 清理（user_tenants 级联删除）
+      const owner2 = connectOwner();
+      try {
+        await owner2`delete from users where email = 'multi@a.test'`;
+      } finally {
+        await owner2.end();
+      }
     });
 
     // T5：账号级停用/启用（spec-v1 US5——客户 PM 停用本公司普通用户）

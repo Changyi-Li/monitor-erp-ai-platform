@@ -157,6 +157,9 @@ describe('auth 契约：客户 PM 邀请本公司用户（T6）', () => {
     ...validUser,
     isActive: false,
     inviteKind: 'customer',
+    // #54：所属客户（客户角色必带；内部/超管 = null）
+    customerId: validUuid,
+    customerName: 'mesongroup',
   };
 
   it('接受合法邀请请求（role 缺省 → customer_user）', () => {
@@ -214,8 +217,16 @@ describe('auth 契约：客户 PM 邀请本公司用户（T6）', () => {
     ).toBe(false);
   });
 
-  it('UserAdminSchema 接受 isActive + inviteKind（管理列表项）', () => {
+  it('UserAdminSchema 接受 isActive + inviteKind + 所属客户（管理列表项）', () => {
     expect(UserAdminSchema.safeParse(validAdminUser).success).toBe(true);
     expect(UserAdminSchema.safeParse({ ...validAdminUser, inviteKind: 'project' }).success).toBe(false);
+    // #54：内部账号无归属 → customerId/customerName 为 null（可空）
+    expect(
+      UserAdminSchema.safeParse({ ...validAdminUser, customerId: null, customerName: null })
+        .success,
+    ).toBe(true);
+    expect(
+      UserAdminSchema.safeParse({ ...validAdminUser, customerId: 'not-a-uuid' }).success,
+    ).toBe(false);
   });
 });

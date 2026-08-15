@@ -9,13 +9,17 @@ import {
 import { UserSchema } from '../auth/schemas';
 
 /**
- * 用户管理列表项：User + 账号状态 + 邀请类型（内部/超管管理界面用）。
+ * 用户管理列表项：User + 账号状态 + 邀请类型 + 所属客户（内部/超管管理界面用）。
  * inviteKind：客户创建（#50）产生的待激活账号 = 'customer'；项目成员邀请 = null。
  * 前端据此判断哪些未激活客户账号可重发邀请链接（grilling：链接再发放）。
+ * customerId/customerName（#54）：客户角色 = user_tenants 归属 + customers 名称；
+ * 内部/超管账号 = null。普通客户用户看本公司花名册时同为同一客户。
  */
 export const UserAdminSchema = UserSchema.extend({
   isActive: z.boolean(),
   inviteKind: z.enum(['customer']).nullable(),
+  customerId: z.string().uuid().nullable(),
+  customerName: z.string().nullable(),
 });
 export type UserAdmin = z.output<typeof UserAdminSchema>;
 

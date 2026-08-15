@@ -8,7 +8,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import {
   type CreateUserRequest,
   type CreateUserResponse,
@@ -38,7 +38,14 @@ import type { AuthUser } from '../common/current-user.decorator';
 import { isCustomerRole, type UserRole } from '@monitor/shared';
 import { AUDIT_ACTIONS, AuditService } from '../audit/audit.service';
 import { DRIZZLE, type Database } from '../database/database.module';
-import { userTenants, refreshTokens, users, type UserRow } from '../database/schema';
+import {
+  customers,
+  userTenants,
+  refreshTokens,
+  users,
+  type CustomerRow,
+  type UserRow,
+} from '../database/schema';
 import { TenantContextService } from '../database/tenant-context.service';
 import { InviteService } from './invite.service';
 import { PasswordService } from './password.service';
@@ -352,20 +359,17 @@ export class AuthService {
       resourceId: user.id,
       metadata: { email, role: input.role },
     });
-    return {
-      user: {
-        ...toUserDto(user),
-        isActive: true,
-        inviteKind: user.inviteKind as 'customer' | null,
-      },
-    };
+    // 内部账号无客户归属（#54：customerId/customerName = null）
+    return { user: toListItem(user, null) };
   }
 
   /**
-   * 用户管理列表（T4/#53）：内部/超管全量平台账号；所有客户角色（customer_pm /
+   * 用户管理列表（T4/#53/#54）：内部/超管全量平台账号；所有客户角色（customer_pm /
    * customer_key_user / customer_user）统一看本公司全部账号——join user_tenants
    * 按租户过滤（users 为平台表无 RLS 须显式过滤）。公司花名册只读：管理操作
    * （邀请/停用/重发）仍按角色在 controller/service 层收着。
+   * #54：每个列表项带所属客户（客户分支 innerJoin customers 取本租户客户名——
+   * RLS 保证不跨租户；内部/超管分支 leftJoin + distinctOn 取第一条归属，防重复行）。
    */
   async listUsers(actor: AuthUser): Promise<UsersListResponse> {
     if (isCustomerRole(actor.role)) {
@@ -374,18 +378,49 @@ export class AuthService {
         throw new InternalServerErrorException('缺少租户上下文');
       }
       const tenantRows = await this.db
-        .select({ user: users })
+        .select({ user: users, customer: customers })
         .from(users)
         .innerJoin(userTenants, eq(userTenants.userId, users.id))
+        .innerJoin(customers, eq(customers.id, userTenants.customerId))
         .where(eq(userTenants.customerId, ctx.tenantId))
         .orderBy(users.createdAt);
-      return { users: tenantRows.map((row) => toListItem(row.user)) };
+      return { users: tenantRows.map((row) => toListItem(row.user, row.customer)) };
     }
     const rows = await this.db
-      .select()
+      .select({ user: users, customer: customers })
       .from(users)
+      // #54：每用户取第一条租户归属（user_tenants.created_at 最早）——相关子查询
+      // join 避免 distinctOn 必须按 users.id 排序而破坏 createdAt 列表顺序，
+      // 且与 loadCustomer 的取首条语义一致（tie-break 唯一）
+      .leftJoin(
+        customers,
+        sql`${customers.id} = (select ut.customer_id from user_tenants ut where ut.user_id = ${users.id} order by ut.created_at limit 1)`,
+      )
       .orderBy(users.createdAt);
-    return { users: rows.map(toListItem) };
+    return { users: rows.map((row) => toListItem(row.user, row.customer ?? null)) };
+  }
+
+  /**
+   * 查用户归属客户（#54；内部/无归属 → null）：
+   * - 传入当前租户（客户 actor 场景）：优先取该租户归属——与 listUsers 客户分支
+   *   显示一致（目标必在本租户，assertSameTenantOr404/新建归属保证）
+   * - 无当前租户（内部/超管视角）：按 user_tenants.created_at 取最早一条（tie-break 唯一）
+   * customers 的 RLS 使客户 actor 只能读到本租户客户行。
+   */
+  private async loadCustomer(userId: string, tenantId?: string): Promise<CustomerRow | null> {
+    const [row] = await this.db
+      .select({ customer: customers })
+      .from(userTenants)
+      .innerJoin(customers, eq(customers.id, userTenants.customerId))
+      .where(
+        and(
+          eq(userTenants.userId, userId),
+          tenantId ? eq(userTenants.customerId, tenantId) : undefined,
+        ),
+      )
+      .orderBy(userTenants.createdAt)
+      .limit(1);
+    return row?.customer ?? null;
   }
 
   /**
@@ -479,11 +514,10 @@ export class AuthService {
       },
     });
     return {
-      user: {
-        ...toUserDto(updated),
-        isActive: updated.isActive,
-        inviteKind: updated.inviteKind as 'customer' | null,
-      },
+      user: toListItem(
+        updated,
+        await this.loadCustomer(userId, this.tenantContext.current?.tenantId ?? undefined),
+      ),
     };
   }
 
@@ -537,7 +571,12 @@ export class AuthService {
 
     if (existing.isActive === input.isActive) {
       // 幂等：状态未变化直接返回（已授权，不落审计噪音）
-      return { user: toListItem(existing) };
+      return {
+        user: toListItem(
+          existing,
+          await this.loadCustomer(userId, this.tenantContext.current?.tenantId ?? undefined),
+        ),
+      };
     }
 
     const [updated] = await this.db
@@ -556,7 +595,12 @@ export class AuthService {
       resourceId: userId,
       metadata: { email: existing.email, isActive: input.isActive },
     });
-    return { user: toListItem(updated) };
+    return {
+      user: toListItem(
+        updated,
+        await this.loadCustomer(userId, this.tenantContext.current?.tenantId ?? undefined),
+      ),
+    };
   }
 
   /**
@@ -614,7 +658,7 @@ export class AuthService {
     return {
       inviteUrl: this.invite.buildInviteUrl(token),
       expiresAt: user.inviteExpiresAt!.toISOString(),
-      user: toListItem(user),
+      user: toListItem(user, await this.loadCustomer(user.id, tenantId)),
     };
   }
 
@@ -717,11 +761,14 @@ function toUserDto(row: UserRow): User {
   };
 }
 
-/** DB 行 → 管理列表项（契约 UserAdmin）：User + 账号状态 + 邀请类型。listUsers 两分支共用 */
-function toListItem(row: UserRow): UserAdmin {
+/** DB 行 → 管理列表项（契约 UserAdmin）：User + 账号状态 + 邀请类型 + 所属客户（#54）。
+ * 客户信息由调用方联查传入（listUsers 两分支 / loadCustomer）；无归属 = null。 */
+function toListItem(row: UserRow, customer: CustomerRow | null = null): UserAdmin {
   return {
     ...toUserDto(row),
     isActive: row.isActive,
     inviteKind: row.inviteKind as 'customer' | null,
+    customerId: customer?.id ?? null,
+    customerName: customer?.name ?? null,
   };
 }
